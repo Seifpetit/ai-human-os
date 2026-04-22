@@ -89,8 +89,28 @@ Schema upgrade path:
 node run_schema_upgrade.js
 ```
 
+Metrics report:
+
+```bash
+node run_metrics_report.js
+```
+
+Direct Python entrypoint:
+
+```bash
+python "AI-Human OS/8_metrics/render_metrics_report.py"
+```
+
+The reporter treats these files as the canonical metric inputs:
+
+- `AI-Human OS/data/cycle_metrics.jsonl`
+- `AI-Human OS/data/run_metrics.json`
+
+`node run_ai.js` now initializes those artifacts at run start, so metrics exist even for zero-cycle or preflight-failed runs.
+
 ## Notes
 
 - The repo currently has no formal test script in `package.json`.
 - Pipeline state and metrics are persisted under `AI-Human OS/data/`.
+- Human-readable metrics output is generated under `AI-Human OS/data/metrics_report/`.
 - The generated diagrams are stored in `AI-Human OS/.docs/`.

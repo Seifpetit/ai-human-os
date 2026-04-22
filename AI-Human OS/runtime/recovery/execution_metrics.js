@@ -137,7 +137,16 @@ export function buildCycleMetric({
   };
 }
 
-export function buildRunSummary({ runId, cycleRecords = [], totalTimeMs = 0 }) {
+export function buildRunSummary({
+  runId,
+  cycleRecords = [],
+  totalTimeMs = 0,
+  startedAt = "",
+  finishedAt = "",
+  runStatus = "completed",
+  failureClassification = "",
+  failureCause = "",
+}) {
   const successful = cycleRecords.filter(record => record.execution?.final_status === "success");
   const failed = cycleRecords.filter(record => record.execution?.final_status !== "success");
   const allViolations = cycleRecords.flatMap(record => record.verification?.violations || []);
@@ -153,6 +162,15 @@ export function buildRunSummary({ runId, cycleRecords = [], totalTimeMs = 0 }) {
 
   return {
     run_id: runId,
+    lifecycle: {
+      started_at: startedAt,
+      finished_at: finishedAt,
+      status: runStatus,
+    },
+    failure: {
+      classification: failureClassification || "none",
+      cause: failureCause || "none",
+    },
     total_cycles: cycleRecords.length,
     success: {
       completed_cycles: successful.length,

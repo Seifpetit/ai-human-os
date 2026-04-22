@@ -1,3 +1,4 @@
+import fs from "fs";
 import { execSync } from "child_process";
 import path from "path";
 
@@ -7,6 +8,7 @@ import {
   readJson,
   readTargetRequest,
   writeJson,
+  writeJsonl,
   writeTargetRequest,
 } from "../runtime/planning/data_layer.js";
 import { buildCycleMetric, buildRunSummary, extractDriftViolations } from "../runtime/recovery/execution_metrics.js";
@@ -23,9 +25,15 @@ import {
 const AI_OS_ROOT = path.join(process.cwd(), "AI-Human OS");
 const PATHS = getRuntimePaths(AI_OS_ROOT);
 const RUN_ID = `run_${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}`;
+const RUN_STARTED_AT = new Date().toISOString();
 const RUN_START_MS = Date.now();
 const MAX_CYCLES = 50;
 const MAX_RETRIES = 5;
+const cycleRecords = [];
+
+let runStatus = "running";
+let runFailureClassification = "";
+let runFailureCause = "";
 
 function normalizeFailureCause({ classification, executionResult, verifyResult, fallback }) {
   if (executionResult?.message) {
@@ -161,11 +169,30 @@ function writeRunSummary(cycleRecords) {
       runId: RUN_ID,
       cycleRecords,
       totalTimeMs: Date.now() - RUN_START_MS,
+      startedAt: RUN_STARTED_AT,
+      finishedAt: new Date().toISOString(),
+      runStatus,
+      failureClassification: runFailureClassification,
+      failureCause: runFailureCause,
     })
   );
 }
 
+function ensureMetricArtifacts() {
+  if (!fs.existsSync(PATHS.cycleMetricsJsonl)) {
+    writeJsonl(PATHS.cycleMetricsJsonl, []);
+  }
+
+  writeRunSummary(cycleRecords);
+}
+
+function updateRunFailure(classification, cause) {
+  runFailureClassification = classification || "";
+  runFailureCause = cause || "";
+}
+
 logStep("FULL EXECUTION STARTED");
+ensureMetricArtifacts();
 
 try {
   logDivider();
@@ -186,11 +213,17 @@ try {
   if (stderr || stdout) {
     console.log(stderr + stdout);
   }
+  runStatus = "preflight_failed";
+  updateRunFailure(
+    combined.toLowerCase().includes("plan_incomplete") ? "plan_incomplete" : "unknown_failure",
+    combined || "State validation failed before execution started."
+  );
+  writeRunSummary(cycleRecords);
   printFailureSummary({
-    classification: combined.toLowerCase().includes("plan_incomplete") ? "plan_incomplete" : "unknown_failure",
+    classification: runFailureClassification,
     executionResult: null,
     verifyResult: null,
-    fallbackCause: combined || "State validation failed before execution started.",
+    fallbackCause: runFailureCause,
   });
   process.exit(1);
 }
@@ -198,7 +231,6 @@ try {
 let cycleNumber = 0;
 let retryCount = 0;
 let activeCycle = null;
-const cycleRecords = [];
 
 while (true) {
   if (!activeCycle) {
@@ -206,11 +238,13 @@ while (true) {
 
     if (cycleNumber > MAX_CYCLES) {
       logError("Max cycles reached - possible infinite loop");
+      runStatus = "failed";
+      updateRunFailure("max_cycles", "Execution hit the max cycle limit without converging.");
       printFailureSummary({
         classification: "unknown_failure",
         executionResult: null,
         verifyResult: null,
-        fallbackCause: "Execution hit the max cycle limit without converging.",
+        fallbackCause: runFailureCause,
       });
       break;
     }
@@ -245,11 +279,13 @@ while (true) {
       terminalReason: "committed",
       converged: true,
     });
+    writeRunSummary(cycleRecords);
     activeCycle = null;
     retryCount = 0;
   } catch (err) {
     if (err.status === 2) {
       logSuccess("IMPLEMENTATION COMPLETE");
+      runStatus = "completed";
       break;
     }
 
@@ -277,6 +313,11 @@ while (true) {
 
     if (classification === "missing_capability_contract") {
       logError("Execution blocked by missing capability contracts");
+      runStatus = "failed";
+      updateRunFailure(
+        classification,
+        "The current file cannot be safely implemented because prerequisite contracts are still missing."
+      );
       finalizeCycle({
         activeCycle,
         cycleRecords,
@@ -286,11 +327,12 @@ while (true) {
         terminalReason: "execution_blocked",
         converged: false,
       });
+      writeRunSummary(cycleRecords);
       printFailureSummary({
         classification,
         executionResult,
         verifyResult,
-        fallbackCause: "The current file cannot be safely implemented because prerequisite contracts are still missing.",
+        fallbackCause: runFailureCause,
       });
       activeCycle = null;
       break;
@@ -298,6 +340,11 @@ while (true) {
 
     if (errorMsg.includes("PLAN_BLOCKED")) {
       logError("Plan blocked by unsatisfied dependencies");
+      runStatus = "failed";
+      updateRunFailure(
+        "plan_incomplete",
+        "The plan still has remaining operations, but their dependencies cannot be satisfied from the current applied state."
+      );
       finalizeCycle({
         activeCycle,
         cycleRecords,
@@ -307,11 +354,12 @@ while (true) {
         terminalReason: "plan_blocked",
         converged: false,
       });
+      writeRunSummary(cycleRecords);
       printFailureSummary({
         classification: "plan_incomplete",
         executionResult,
         verifyResult,
-        fallbackCause: "The plan still has remaining operations, but their dependencies cannot be satisfied from the current applied state.",
+        fallbackCause: runFailureCause,
       });
       activeCycle = null;
       break;
@@ -322,6 +370,11 @@ while (true) {
 
       if (retryCount > MAX_RETRIES) {
         logError("Max retries reached -> stopping");
+        runStatus = "failed";
+        updateRunFailure(
+          classification,
+          "Self-healing retries were exhausted without converging on a valid file."
+        );
         finalizeCycle({
           activeCycle,
           cycleRecords,
@@ -331,11 +384,12 @@ while (true) {
           terminalReason: "max_retries",
           converged: false,
         });
+        writeRunSummary(cycleRecords);
         printFailureSummary({
           classification,
           executionResult,
           verifyResult,
-          fallbackCause: "Self-healing retries were exhausted without converging on a valid file.",
+          fallbackCause: runFailureCause,
         });
         activeCycle = null;
         break;
@@ -366,6 +420,8 @@ while (true) {
     }
 
     logError("Operator crashed (unknown)");
+    runStatus = "failed";
+    updateRunFailure(classification, message || "Operator crashed for an unknown reason.");
     finalizeCycle({
       activeCycle,
       cycleRecords,
@@ -375,16 +431,21 @@ while (true) {
       terminalReason: "unknown_failure",
       converged: false,
     });
+    writeRunSummary(cycleRecords);
     printFailureSummary({
       classification,
       executionResult,
       verifyResult,
-      fallbackCause: message || "Operator crashed for an unknown reason.",
+      fallbackCause: runFailureCause,
     });
     console.error(message);
     activeCycle = null;
     break;
   }
+}
+
+if (runStatus === "running") {
+  runStatus = "completed";
 }
 
 writeRunSummary(cycleRecords);
