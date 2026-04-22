@@ -1,0 +1,243 @@
+========================================
+HUMAN INPUT FIRST - EDIT HERE
+========================================
+
+Optional: add plan-specific refinements below before generation.
+Leave empty if no extra human planning guidance is needed.
+
+[ HUMAN PLAN REFINEMENT INPUT START ]
+
+<optional additional planning constraints, sequencing notes, or exclusions>
+
+[ HUMAN PLAN REFINEMENT INPUT END ]
+
+----------------------------------------
+FILES THIS PROMPT NEEDS
+----------------------------------------
+
+Count: 5
+
+- PROJECT_CONTEXT.md
+- SYSTEM_REGISTRY.md
+- FILE_REGISTRY.md
+- FEATURE_REQUEST.md
+- IMPLEMENTATION_PLAN.md (TEMPLATE)
+
+----------------------------------------
+GOAL
+----------------------------------------
+
+You are generating an implementation plan for a feature.
+
+Your task is to populate the provided IMPLEMENTATION_PLAN.md template using:
+
+- FEATURE_REQUEST.md
+- project memory (.md files)
+- any optional human refinement block at the top of this file
+
+----------------------------------------
+SYSTEM ROLE
+----------------------------------------
+
+You are NOT writing code.
+
+You are:
+- deriving structure
+- defining implementation steps
+- sequencing dependencies
+
+----------------------------------------
+INPUT FILES
+----------------------------------------
+
+You will receive:
+
+- PROJECT_CONTEXT.md
+- SYSTEM_REGISTRY.md
+- FILE_REGISTRY.md
+- FEATURE_REQUEST.md
+- IMPLEMENTATION_PLAN.md (TEMPLATE)
+
+----------------------------------------
+CRITICAL RULES
+----------------------------------------
+
+- DO NOT generate code
+- DO NOT create new files outside the plan
+- DO NOT modify template structure
+- DO NOT add new sections
+- DO NOT remove sections
+- DO NOT introduce unrelated features
+- DO NOT expand scope beyond FEATURE_REQUEST.md
+
+----------------------------------------
+OPERATION MODEL (CRITICAL)
+----------------------------------------
+
+Each cycle is an OPERATION, not just a file.
+
+Every step MUST define:
+
+- file: <path>
+- type: <operation_type>
+
+Valid operation types:
+- new_file
+- edit_existing_file
+
+Each operation is uniquely identified as:
+<file_path>::<type>
+
+----------------------------------------
+DEPENDENCY RULES (CRITICAL)
+----------------------------------------
+
+Dependencies MUST be defined using operation keys, NOT file paths.
+
+Correct:
+depends_on:
+- client/ui/layout/LobbyLayout.js::new_file
+
+Incorrect:
+depends_on:
+- client/ui/layout/LobbyLayout.js
+
+Rules:
+- A dependency MUST refer to a specific operation
+- Dependencies must match previously defined cycles
+- No dependency should reference a file without a type
+- No circular dependencies allowed
+
+----------------------------------------
+WHAT TO DO
+----------------------------------------
+
+- Analyze FEATURE_REQUEST.md
+- Break the feature into implementation steps
+- Define required files and their roles
+- Assign a type to each step (new_file or edit_existing_file)
+- Order steps by dependency (operation-level, not file-level)
+- Fill Delivery Surfaces concretely
+- Fill Browser Scaffold concretely for browser-facing UI features
+- Fill Capability Dependencies concretely for features that depend on reusable system capabilities such as multiplayer, auth, payments, session flow, or other shared workflows
+- Fill Cross-File Contracts concretely when the feature spans multiple UI files or delivery surfaces
+- Fill Workflow Contracts concretely when the feature includes user actions, multiplayer/session flow, state ownership, or server boundaries
+
+----------------------------------------
+PLAN REQUIREMENTS
+----------------------------------------
+
+The plan must:
+
+- follow strict dependency order
+- separate responsibilities cleanly
+- avoid circular dependencies
+- respect system architecture (input -> update -> state -> render)
+- keep each step small enough for one-file cycles
+- ensure every dependency references a valid prior operation
+- account for delivery completeness, not just component completeness
+
+For browser-facing or screen/UI features, the plan must explicitly account for:
+- render_surface
+- style_surface
+- runtime_entry_surface (or explicitly mark it not_required if an existing runtime already makes the feature viewable)
+- html_entry
+- dom_mount_entry
+- mount_target
+- scaffold_strategy
+
+For features that depend on reusable capabilities such as multiplayer, auth, payments, sessions, chat, or other shared workflows, the plan must define Capability Dependencies concretely:
+- capability
+- status
+- rationale
+- required_contracts
+- existing_surfaces
+- prerequisite_operations
+- plan_action
+
+Capability dependency rules:
+- A capability is a reusable system ability that the feature consumes, not just a file list
+- Examples include `multiplayer_room_creation`, `auth_session`, `payment_checkout`, `chat_message_delivery`
+- If the capability is `missing` or `partial`, set `plan_action` to `establish_first`
+- If the capability already exists and can be safely reused, set `plan_action` to `reuse_existing`
+- `required_contracts` must name the shared contracts and authority boundaries the capability needs
+- `existing_surfaces` must list concrete existing files or boundaries when they already exist, or `none`
+- `prerequisite_operations` must point to concrete operation keys in this plan using `<file_path>::<operation_type>` when capability establishment is required
+- consumer files must not appear before the prerequisite capability-establishment operations they depend on
+- do not start a dependent feature at a client adapter, UI component, or server consumer if the underlying capability contracts are still missing
+- if a feature would require guessing a server endpoint, shared payload, session owner, or authority boundary, the plan is incomplete and must establish those contracts first
+
+For browser-facing or screen/UI features, the plan must also define Cross-File Contracts concretely:
+- surface_family
+- style_owner
+- render_uses_style_surface
+- child_components
+- prop_contracts
+
+Cross-File Contracts are not optional for browser-facing UI plans.
+They must describe the shared contract tying the render surface, style surface, and child UI components together.
+
+Contract rules:
+- surface_family must name the shared class-hook family for the UI surface
+- style_owner must point to the file that owns the shared style surface
+- render_uses_style_surface must be `required` unless there is a deliberate reason it is `not_required`
+- each child component entry must declare:
+  - file path
+  - exported symbol
+  - expected class hooks
+  - expected props (or `none`)
+- each prop_contract must declare:
+  - parent file path
+  - child symbol
+  - props passed from parent to child
+
+Format Cross-File Contracts exactly as the template requires.
+Do not leave placeholder values for browser-facing UI plans.
+
+Browser scaffold rules:
+- if no browser scaffold already exists, prepend minimal scaffold operations before or alongside feature-specific UI work
+- scaffold means:
+  - an html entry
+  - a DOM mount file
+  - a mount target id
+  - a reachable import path into the declared runtime entry surface
+- if scaffold already exists, use `reuse_existing`
+- if scaffold is missing, use `create_if_missing`
+
+For workflow-driven features, the plan must also define Workflow Contracts concretely:
+- workflow_mode
+- action_owner
+- request_boundary
+- response_boundary
+- state_owner
+- server_authority_boundary
+- success_surface
+- failure_surface
+
+Workflow rules:
+- use `projection_only` only when the feature intentionally captures input without state mutation or server communication
+- use `client_action` when the client initiates work but does not own authoritative state
+- use `server_authoritative` when the workflow depends on server-owned truth
+- do not leave workflow boundaries implicit for multiplayer/session features
+
+Do not assume that a component file alone makes a browser-facing feature deliverable.
+If the request says the feature is visible in browser / a screen / a landing point, the plan must represent the files or existing surfaces that make that true.
+
+Do not stop at file listing.
+The plan must describe how the files fit together as one coherent delivery surface.
+
+----------------------------------------
+OUTPUT FORMAT
+----------------------------------------
+
+Return ONLY the populated IMPLEMENTATION_PLAN.md
+
+----------------------------------------
+FINAL PRINCIPLE
+----------------------------------------
+
+You are translating intent into a deterministic execution path.
+
+Not inventing. Not coding. Structuring.
+
+You must think in operations, not files.

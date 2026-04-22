@@ -1,0 +1,127 @@
+{
+  "meta": {
+    "name": "<product_or_theme_name>",
+    "version": 1,
+    "quality_level": "<prototype|standard_passing|production_ready|premium_polished>",
+    "notes": "<short description of the design system intent>"
+  },
+  "color": {
+    "brand": {
+      "primary": "<hex>",
+      "secondary": "<hex>",
+      "accent": "<hex>"
+    },
+    "surface": {
+      "background": "<hex>",
+      "panel": "<hex>",
+      "elevated": "<hex>",
+      "inverse": "<hex>"
+    },
+    "text": {
+      "primary": "<hex>",
+      "secondary": "<hex>",
+      "inverse": "<hex>",
+      "muted": "<hex>"
+    },
+    "border": {
+      "subtle": "<hex>",
+      "strong": "<hex>"
+    },
+    "state": {
+      "success": "<hex>",
+      "warning": "<hex>",
+      "danger": "<hex>",
+      "info": "<hex>",
+      "disabled": "<hex>"
+    },
+    "button": {
+      "primary_bg": "<hex>",
+      "primary_text": "<hex>",
+      "secondary_bg": "<hex>",
+      "secondary_text": "<hex>",
+      "ghost_text": "<hex>"
+    }
+  },
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "xxl": 32
+  },
+  "radius": {
+    "sm": 4,
+    "md": 8,
+    "lg": 12,
+    "pill": 999
+  },
+  "typography": {
+    "font_family": {
+      "base": "<font family>",
+      "display": "<font family>",
+      "mono": "<font family>"
+    },
+    "size": {
+      "caption": 12,
+      "body": 16,
+      "body_lg": 18,
+      "title": 28,
+      "display": 40
+    },
+    "weight": {
+      "regular": 400,
+      "medium": 500,
+      "semibold": 600,
+      "bold": 700
+    },
+    "line_height": {
+      "tight": 1.1,
+      "base": 1.4,
+      "relaxed": 1.6
+    }
+  },
+  "shadow": {
+    "none": "none",
+    "sm": "<shadow value>",
+    "md": "<shadow value>",
+    "lg": "<shadow value>"
+  },
+  "motion": {
+    "duration": {
+      "fast": 120,
+      "base": 180,
+      "slow": 280
+    },
+    "easing": {
+      "standard": "<easing>",
+      "emphasized": "<easing>"
+    }
+  },
+  "component": {
+    "button": {
+      "height": {
+        "sm": 32,
+        "md": 40,
+        "lg": 48
+      },
+      "padding_x": {
+        "sm": 12,
+        "md": 16,
+        "lg": 20
+      },
+      "radius": "<token ref or literal>",
+      "font_weight": "<token ref or literal>"
+    },
+    "input": {
+      "height": 40,
+      "padding_x": 12,
+      "radius": "<token ref or literal>"
+    },
+    "card": {
+      "padding": 16,
+      "radius": "<token ref or literal>",
+      "shadow": "<token ref or literal>"
+    }
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "meta": {
+    "name": "Gravity Ball Core Theme",
+    "version": 1,
+    "quality_level": "standard_passing",
+    "notes": "Restrained sci-fi sport palette for a browser multiplayer physics game."
+  },
+  "color": {
+    "brand": {
+      "primary": "#2D6CDF",
+      "secondary": "#18B6A3",
+      "accent": "#F2C14E"
+    },
+    "surface": {
+      "background": "#0E1525",
+      "panel": "#162033",
+      "elevated": "#1D2940",
+      "inverse": "#F6F8FC"
+    },
+    "text": {
+      "primary": "#F6F8FC",
+      "secondary": "#C8D2E3",
+      "inverse": "#111827",
+      "muted": "#8FA1BA"
+    },
+    "border": {
+      "subtle": "#2B3953",
+      "strong": "#4A5E82"
+    },
+    "state": {
+      "success": "#1FA971",
+      "warning": "#D99A2B",
+      "danger": "#D9534F",
+      "info": "#2D6CDF",
+      "disabled": "#5D6E8A"
+    },
+    "button": {
+      "primary_bg": "#2D6CDF",
+      "primary_text": "#F6F8FC",
+      "secondary_bg": "#1D2940",
+      "secondary_text": "#F6F8FC",
+      "ghost_text": "#C8D2E3"
+    }
+  },
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "xxl": 32
+  },
+  "radius": {
+    "sm": 4,
+    "md": 8,
+    "lg": 12,
+    "pill": 999
+  },
+  "typography": {
+    "font_family": {
+      "base": "system-ui, sans-serif",
+      "display": "system-ui, sans-serif",
+      "mono": "Consolas, monospace"
+    },
+    "size": {
+      "caption": 12,
+      "body": 16,
+      "body_lg": 18,
+      "title": 28,
+      "display": 40
+    },
+    "weight": {
+      "regular": 400,
+      "medium": 500,
+      "semibold": 600,
+      "bold": 700
+    },
+    "line_height": {
+      "tight": 1.1,
+      "base": 1.4,
+      "relaxed": 1.6
+    }
+  },
+  "shadow": {
+    "none": "none",
+    "sm": "0 2px 8px rgba(0, 0, 0, 0.18)",
+    "md": "0 8px 24px rgba(0, 0, 0, 0.22)",
+    "lg": "0 16px 40px rgba(0, 0, 0, 0.28)"
+  },
+  "motion": {
+    "duration": {
+      "fast": 120,
+      "base": 180,
+      "slow": 280
+    },
+    "easing": {
+      "standard": "ease",
+      "emphasized": "cubic-bezier(0.2, 0.8, 0.2, 1)"
+    }
+  },
+  "component": {
+    "button": {
+      "height": {
+        "sm": 32,
+        "md": 40,
+        "lg": 48
+      },
+      "padding_x": {
+        "sm": 12,
+        "md": 16,
+        "lg": 20
+      },
+      "radius": 8,
+      "font_weight": 600
+    },
+    "input": {
+      "height": 40,
+      "padding_x": 12,
+      "radius": 8
+    },
+    "card": {
+      "padding": 16,
+      "radius": 12,
+      "shadow": "0 8px 24px rgba(0, 0, 0, 0.22)"
+    }
+  }
+}

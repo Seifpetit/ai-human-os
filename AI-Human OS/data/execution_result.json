@@ -1,0 +1,13 @@
+{
+  "request_id": "req_1776457347586",
+  "operation_key": "op_010",
+  "status": "blocked",
+  "file_path": "client/ui/createRoomClient.js",
+  "provider": "openai",
+  "model": "gpt-5.4",
+  "reason": "insufficient_context",
+  "message": "The browser-to-server transport for `client/ui/createRoomClient.js` is not defined by the current registry or implemented prerequisite wiring, so creating this file would require inventing an unsupported client request interface.",
+  "prompt_hash": "sha256:f66d33a0b64dcd55d683f254920a0cd82fa29502d966ea27b2c68b20cf5fc3a6",
+  "response_hash": "sha256:57f62a0a36b7f2fd1efe39f7f9af1bf838d8851fd5d1b46ea8739c5c0cc0e967",
+  "generated_at": "2026-04-17T20:32:34.777Z"
+}

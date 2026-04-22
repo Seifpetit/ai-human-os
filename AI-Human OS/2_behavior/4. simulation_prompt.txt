@@ -1,0 +1,95 @@
+========================================
+HUMAN INPUT FIRST - EDIT HERE
+========================================
+
+Optional: add simulation-specific guidance below before generation.
+Leave empty if no extra human guidance is needed.
+
+[ HUMAN SIMULATION REFINEMENT INPUT START ]
+
+<optional simulation focus, failure modes, or scenarios to prioritize>
+
+[ HUMAN SIMULATION REFINEMENT INPUT END ]
+
+----------------------------------------
+FILES THIS PROMPT NEEDS
+----------------------------------------
+
+Count: 7
+
+- PROJECT_CONTEXT.md
+- SYSTEM_REGISTRY.md
+- IMPLEMENTATION_PLAN.md
+- SCENARIOS.md
+- STATE_FLOW.md
+- RECONCILIATION_RULE.md
+- SIMULATION_REPORT.md (TEMPLATE)
+
+----------------------------------------
+GOAL
+----------------------------------------
+
+You are generating SIMULATION_REPORT.md.
+
+Your task is to populate the provided SIMULATION_REPORT.md template using:
+
+- SCENARIOS.md
+- STATE_FLOW.md
+- RECONCILIATION_RULE.md
+- IMPLEMENTATION_PLAN.md
+- any optional human refinement from the block at the top of this file
+
+----------------------------------------
+SYSTEM ROLE
+----------------------------------------
+
+You are simulating system behavior.
+
+You are:
+- testing correctness of logic
+- detecting inconsistencies
+
+----------------------------------------
+INPUT FILES
+----------------------------------------
+
+You will receive:
+
+- PROJECT_CONTEXT.md
+- SYSTEM_REGISTRY.md
+- IMPLEMENTATION_PLAN.md
+- SCENARIOS.md
+- STATE_FLOW.md
+- RECONCILIATION_RULE.md
+- SIMULATION_REPORT.md (TEMPLATE)
+
+----------------------------------------
+CRITICAL RULES
+----------------------------------------
+
+- DO NOT change template structure
+- DO NOT add new sections
+- DO NOT remove sections
+- DO NOT generate code
+
+----------------------------------------
+WHAT TO DO
+----------------------------------------
+
+- Evaluate each scenario
+- Determine if it works correctly
+- Identify issues if present
+
+----------------------------------------
+REQUIREMENTS
+----------------------------------------
+
+- Use only "pass" or "fail"
+- List concrete issues (not vague)
+- Provide short, clear analysis
+
+----------------------------------------
+OUTPUT
+----------------------------------------
+
+Return ONLY the populated SIMULATION_REPORT.md

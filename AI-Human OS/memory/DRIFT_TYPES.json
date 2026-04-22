@@ -1,0 +1,54 @@
+{
+  "drift_types": [
+    {
+      "name": "CONTRACT_DRIFT",
+      "description": "file violates declared responsibility or scope",
+      "severity": "high"
+    },
+    {
+      "name": "RESPONSIBILITY_DRIFT",
+      "description": "file mixes multiple concerns",
+      "severity": "high"
+    },
+    {
+      "name": "ARCHITECTURE_DRIFT",
+      "description": "violates system flow (input -> update -> state -> render)",
+      "severity": "critical"
+    },
+    {
+      "name": "DEPENDENCY_DRIFT",
+      "description": "missing or incorrect dependencies",
+      "severity": "high"
+    },
+    {
+      "name": "SEMANTIC_DRIFT",
+      "description": "inconsistent naming or concept duplication",
+      "severity": "medium"
+    },
+    {
+      "name": "PLAN_DRIFT",
+      "description": "output does not match planned behavior",
+      "severity": "high"
+    },
+    {
+      "name": "EXECUTION_DRIFT",
+      "description": "output is incomplete or unusable",
+      "severity": "critical"
+    },
+    {
+      "name": "SYNTAX_DRIFT",
+      "description": "invalid code structure or syntax errors",
+      "severity": "critical"
+    },
+    {
+      "name": "STATE_DRIFT",
+      "description": "illegal state mutation outside allowed ownership",
+      "severity": "high"
+    },
+    {
+      "name": "NONDETERMINISM_DRIFT",
+      "description": "inconsistent structure across identical runs",
+      "severity": "medium"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "decision": "file_split",
+  "options": [
+    "split_file",
+    "keep_file"
+  ],
+  "criteria": {
+    "line_count_over_300": 4,
+    "multiple_responsibilities_detected": 5,
+    "low_cohesion": 4
+  },
+  "selection": "highest_score"
+}

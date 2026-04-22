@@ -1,0 +1,218 @@
+========================================
+HUMAN INPUT FIRST - EDIT HERE
+========================================
+
+This is the main human planning surface.
+Write rough thoughts here first. Bullets, fragments, and incomplete ideas are fine.
+
+Workflow:
+1. Fill this block
+2. Run `node run_planning_intake.js`
+3. Review and approve `AI-Human OS/1_planning/INTENT_CONFIRMATION.md`
+4. Run `node run_planning.js`
+
+Do NOT try to speak like a planner.
+Speak like the person who knows what this project should become right now.
+
+The machine already knows:
+- the current files
+- the current registry and memory
+- the current technical state
+
+The machine still needs from you:
+- meaning
+- priority
+- scope boundaries
+- tradeoffs
+
+HUMAN INTENT -> MACHINE INPUT MAP
+
+- What is this project, really?
+  -> gives the planner product identity and filters irrelevant features
+- What should be true in the next playable version?
+  -> gives the planner the planning horizon and "reason now"
+- What must the player feel or notice first?
+  -> gives the planner experience priority and quality bar
+- What absolutely must be in?
+  -> gives the planner must-have feature candidates
+- What must stay out for now?
+  -> gives the planner hard scope boundaries and deferred areas
+- How much complexity can we afford right now?
+  -> gives the planner feature budget and sequencing pressure
+- What constraints are non-negotiable?
+  -> gives the planner technical/product limits it must respect
+
+Good input style:
+- plain language
+- direct priorities
+- visible exclusions
+- honest limits
+- rough notes are acceptable
+
+You do not need polished writing.
+You do need clear intent.
+
+[ HUMAN SCOPE INPUT START ]
+
+1. PROJECT IN ONE BREATH
+<What is this project in plain language?
+1-3 lines. Say what it is, not how it is implemented.>
+
+2. NEXT PLAYABLE WIN
+<If this planning pass succeeds, what will a player be able to do or experience next?
+Keep it concrete and player-visible.>
+
+3. PLAYER PROMISE RIGHT NOW
+<What should feel most true in this version?
+Examples: simple, fast to try, easy to understand, competitive, social, reliable, atmospheric.>
+
+4. MUST INCLUDE NOW
+<List the must-have player-visible capabilities for this phase.
+Short bullets are best.>
+
+5. MUST STAY OUT NOW
+<List anything that must not enter scope yet.
+Include systems, polish, backend depth, edge cases, or "nice to have" work.>
+
+6. BUDGET AND STAGE
+Project Stage:
+<prototype | v1 | stabilization | scale-up>
+
+Feature Budget:
+<How many features should this planning pass allow at most?>
+
+Complexity Budget:
+<What level of complexity is acceptable right now?
+What should the planner actively avoid?>
+
+7. HARD CONSTRAINTS
+<Technical, product, team, time, simplicity, or architecture constraints the planner must obey.>
+
+8. FUTURE, BUT NOT NOW
+<What matters later, but should be intentionally deferred in this pass?>
+
+9. OPTIONAL NOTES OR CORRECTIONS
+<Anything the machine might otherwise misunderstand about your intent>
+
+[ HUMAN SCOPE INPUT END ]
+
+----------------------------------------
+FILES THIS PROMPT NEEDS
+----------------------------------------
+
+Count: 3
+
+- PROJECT_CONTEXT.md
+- FILE_REGISTRY.md
+- SYSTEM_REGISTRY.md
+
+----------------------------------------
+GOAL
+----------------------------------------
+
+You are planning the feature layer for a project.
+
+Your task is to generate FEATURES_LIST.md using:
+- existing project memory (.md files)
+- explicit human input from the block at the top of this file
+
+----------------------------------------
+SYSTEM ROLE
+----------------------------------------
+
+You are NOT designing a full roadmap.
+
+You are:
+- narrowing scope
+- selecting relevant features for NOW
+- respecting human-imposed limits
+
+----------------------------------------
+INPUT FILES
+----------------------------------------
+
+You will receive:
+
+- PROJECT_CONTEXT.md
+- FILE_REGISTRY.md
+- SYSTEM_REGISTRY.md
+
+These define the system.
+
+----------------------------------------
+RULES
+----------------------------------------
+
+- Do NOT generate code
+- Do NOT generate implementation plans
+- Do NOT invent long-term roadmap features
+- Do NOT exceed the feature budget
+- Prefer fewer, sharper features over many weak ones
+- Every feature must be justified by "Goal Right Now"
+
+----------------------------------------
+FEATURE DEFINITION (CRITICAL)
+----------------------------------------
+
+A feature is a USER-LEVEL capability.
+
+- It must describe what the user can do or experience
+- It must NOT describe internal systems or technical components
+
+Examples:
+
+VALID:
+- "Join a multiplayer game session"
+- "Create and interact with gravity wells"
+- "See the game state rendered on screen"
+
+INVALID:
+- "Real-time sync system"
+- "Physics engine"
+- "State broadcast pipeline"
+- "Latency handling model"
+
+If a concept is purely internal, DO NOT list it as a feature.
+
+----------------------------------------
+WHAT TO PRODUCE
+----------------------------------------
+
+Generate FEATURES_LIST.md
+
+----------------------------------------
+FEATURE FORMAT
+----------------------------------------
+
+Each feature must include:
+
+- name
+- purpose
+- reason_now
+- priority (high | medium | low)
+- status (candidate | selected | deferred | blocked)
+
+----------------------------------------
+SELECTION LOGIC
+----------------------------------------
+
+- prioritize features that directly support the current goal
+- exclude anything outside scope, even if "nice to have"
+- if uncertain -> do NOT include
+- Do NOT mark all features as "selected"
+- At most 1-2 features can be "selected"
+- Remaining features must be "candidate" or "deferred"
+
+----------------------------------------
+OUTPUT FORMAT
+----------------------------------------
+
+Return ONLY FEATURES_LIST.md
+
+----------------------------------------
+FINAL PRINCIPLE
+----------------------------------------
+
+You are not expanding possibilities.
+
+You are reducing them into a controlled, buildable set.

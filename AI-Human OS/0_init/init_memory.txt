@@ -1,0 +1,257 @@
+========================================
+HUMAN INPUT FIRST - EDIT HERE
+========================================
+
+Edit the blocks below first. Everything after them is prompt logic.
+
+[ HUMAN PROJECT DESCRIPTION START ]
+
+Gravity Ball - Simple Summary
+
+What it is:
+A multiplayer physics game where players do not control the ball directly.
+
+What players do:
+They click to create gravity wells that pull the ball toward them.
+
+Core Idea:
+There is one ball in the world.
+Every player adds forces, not movement.
+The ball moves based on combined forces.
+
+Think: everyone is influencing gravity, not controlling the object.
+
+How it works:
+The server runs physics at 60 ticks per second.
+It calculates:
+- where the ball is
+- how fast it is moving
+- how all gravity wells affect it
+
+Then it sends that state to all players.
+
+Clients only see and send input. They do not decide anything.
+
+Hard parts:
+1. Force math
+   Ball acceleration is the sum of all pulls.
+2. Lag
+   A player clicks based on what they see, but the server is already in the future.
+
+Rules:
+- server is absolute authority
+- no fake smoothing or prediction for now
+- one step at a time, one file per cycle
+- think through edge cases before coding
+
+One-line version:
+Players compete by shaping gravity in real time while a server-controlled physics system decides the outcome.
+
+[ HUMAN PROJECT DESCRIPTION END ]
+
+[ HUMAN STYLE INPUT START ]
+
+Quality level:
+<prototype | standard_passing | production_ready | premium_polished>
+
+Product tone:
+<playful | tactical | serious | premium | minimal | bold>
+
+Visual direction:
+<short description>
+
+Color direction:
+<short description or palette preference>
+
+UI density:
+<airy | balanced | compact>
+
+Accessibility baseline:
+<short description>
+
+Interaction notes:
+<short description>
+
+[ HUMAN STYLE INPUT END ]
+
+----------------------------------------
+FILES THIS PROMPT NEEDS
+----------------------------------------
+
+Count: 6
+
+- PROJECT_CONTEXT.md
+- FILE_REGISTRY.md
+- SYSTEM_REGISTRY.md
+- PRODUCT_STANDARDS.template.md
+- UI_PATTERNS.template.md
+- DESIGN_TOKENS.template.json
+
+----------------------------------------
+GOAL
+----------------------------------------
+
+You are initializing the core memory files for a project.
+
+Your task is to take the provided template files and return FILLED versions of:
+
+- PROJECT_CONTEXT.md
+- FILE_REGISTRY.md
+- SYSTEM_REGISTRY.md
+- PRODUCT_STANDARDS.md
+- UI_PATTERNS.md
+- DESIGN_TOKENS.json
+
+Initialize a clean, minimal, and consistent system memory.
+
+This memory must:
+- preserve existing structure
+- respect architecture laws already defined
+- remain deterministic and extensible
+- avoid inventing unnecessary details
+- initialize product quality and design standards explicitly
+
+----------------------------------------
+CRITICAL RULES
+----------------------------------------
+
+- DO NOT rewrite or remove existing sections
+- DO NOT change architecture law if already present
+- DO NOT invent features or technical decisions not grounded in input
+- DO NOT add speculative files or entries
+- DO NOT overfill - minimal clarity only
+
+----------------------------------------
+TEMPLATE HANDLING
+----------------------------------------
+
+You will receive template versions of:
+
+- PROJECT_CONTEXT.md
+- FILE_REGISTRY.md
+- SYSTEM_REGISTRY.md
+- PRODUCT_STANDARDS.template.md
+- UI_PATTERNS.template.md
+- DESIGN_TOKENS.template.json
+
+You must:
+
+- PRESERVE all existing structure and wording
+- ONLY fill clearly marked human-input sections
+- ONLY extend where explicitly safe
+
+Use the human input blocks defined at the top of this file.
+
+If the project description block is empty:
+- leave that section empty
+
+If the style block is empty:
+- choose restrained, broadly usable defaults
+- keep them minimal and coherent
+- do NOT overdesign the system
+
+----------------------------------------
+FILE-SPECIFIC INSTRUCTIONS
+----------------------------------------
+
+# 1. PROJECT_CONTEXT.md
+
+- KEEP:
+  - Purpose
+  - Architecture Law
+  - Folder Structure
+  - Core Invariants
+  - Philosophy
+
+- ONLY MODIFY:
+  - the HUMAN PROJECT DESCRIPTION block
+
+- DO NOT:
+  - rewrite architecture
+  - change invariants
+  - add new system rules
+
+----------------------------------------
+
+# 2. FILE_REGISTRY.md
+
+- KEEP entire structure
+- DO NOT add entries
+- DO NOT invent files
+- Ensure it remains empty and ready for append-only usage
+
+----------------------------------------
+
+# 3. SYSTEM_REGISTRY.md
+
+- KEEP:
+  - Global State Shape
+  - Ownership Rules
+  - Read/Write Rules
+  - Architecture Invariants
+  - Shared Symbols
+
+- DO NOT:
+  - add new rules unless explicitly required by the human description
+  - modify existing invariants
+
+- KEEP Append Log empty
+
+----------------------------------------
+
+# 4. PRODUCT_STANDARDS.md
+
+- KEEP the template structure
+- FILL the human input block
+- DEFINE quality level expectations clearly
+- KEEP standards practical and reusable
+- DO NOT invent detailed implementation rules that belong in file-level planning
+
+----------------------------------------
+
+# 5. UI_PATTERNS.md
+
+- KEEP the template structure
+- FILL the human input block
+- DEFINE reusable interaction and composition patterns
+- PREFER stable conventions over feature-specific details
+- DO NOT turn this into a token file
+
+----------------------------------------
+
+# 6. DESIGN_TOKENS.json
+
+- KEEP the JSON shape valid
+- FILL reasonable initial token values
+- ENSURE values are internally coherent
+- PREFER a restrained, reusable baseline over an overfit theme
+- DO NOT leave required fields blank
+
+----------------------------------------
+OUTPUT FORMAT
+----------------------------------------
+
+Return EXACTLY these files:
+
+1. PROJECT_CONTEXT.md
+2. FILE_REGISTRY.md
+3. SYSTEM_REGISTRY.md
+4. PRODUCT_STANDARDS.md
+5. UI_PATTERNS.md
+6. DESIGN_TOKENS.json
+
+Each must be:
+
+- clean
+- complete
+- directly copy-pasteable
+
+----------------------------------------
+FINAL PRINCIPLE
+----------------------------------------
+
+You are NOT designing the system.
+
+You are initializing memory for a system that already has structure.
+
+Respect what exists. Fill only what is missing.

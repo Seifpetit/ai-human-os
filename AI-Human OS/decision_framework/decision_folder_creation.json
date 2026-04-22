@@ -1,0 +1,13 @@
+{
+  "decision": "folder_creation",
+  "options": [
+    "create_folder",
+    "reuse_existing"
+  ],
+  "criteria": {
+    "related_files_count_ge_3": 4,
+    "new_domain_introduced": 5,
+    "naming_grouping_needed": 3
+  },
+  "selection": "highest_score"
+}

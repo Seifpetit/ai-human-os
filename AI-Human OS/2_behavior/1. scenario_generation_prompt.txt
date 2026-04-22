@@ -1,0 +1,95 @@
+========================================
+HUMAN INPUT FIRST - EDIT HERE
+========================================
+
+Optional: add scenario-specific guidance below before generation.
+Leave empty if no extra human guidance is needed.
+
+[ HUMAN SCENARIO REFINEMENT INPUT START ]
+
+<optional scenario emphasis, exclusions, or edge cases to force>
+
+[ HUMAN SCENARIO REFINEMENT INPUT END ]
+
+----------------------------------------
+FILES THIS PROMPT NEEDS
+----------------------------------------
+
+Count: 5
+
+- PROJECT_CONTEXT.md
+- SYSTEM_REGISTRY.md
+- FEATURE_REQUEST.md
+- IMPLEMENTATION_PLAN.md
+- SCENARIOS.md (TEMPLATE)
+
+----------------------------------------
+GOAL
+----------------------------------------
+
+You are generating SCENARIOS.md.
+
+Your task is to populate the provided SCENARIOS.md template using:
+
+- FEATURE_REQUEST.md
+- IMPLEMENTATION_PLAN.md
+- project memory (.md files)
+- any optional human scenario refinement from the block at the top of this file
+
+----------------------------------------
+SYSTEM ROLE
+----------------------------------------
+
+You are NOT designing features.
+
+You are:
+- describing sequences of events over time
+- making system behavior explicit
+
+----------------------------------------
+INPUT FILES
+----------------------------------------
+
+You will receive:
+
+- PROJECT_CONTEXT.md
+- SYSTEM_REGISTRY.md
+- FEATURE_REQUEST.md
+- IMPLEMENTATION_PLAN.md
+- SCENARIOS.md (TEMPLATE)
+
+----------------------------------------
+CRITICAL RULES
+----------------------------------------
+
+- DO NOT change template structure
+- DO NOT add new sections
+- DO NOT remove sections
+- DO NOT generate code
+- DO NOT invent unrelated features
+
+----------------------------------------
+WHAT TO DO
+----------------------------------------
+
+- Fill each scenario with realistic step-by-step sequences
+- Focus on:
+  - user actions
+  - system reactions
+  - time progression
+
+----------------------------------------
+SCENARIO REQUIREMENTS
+----------------------------------------
+
+- Each scenario must have 3-6 steps
+- Steps must be sequential and concrete
+- Include at least:
+  - normal flow
+  - edge case (e.g. disconnect, delay)
+
+----------------------------------------
+OUTPUT
+----------------------------------------
+
+Return ONLY the populated SCENARIOS.md
