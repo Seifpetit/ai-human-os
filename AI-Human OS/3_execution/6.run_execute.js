@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 
 import {
   getRuntimePaths,
+  readJson,
   readTargetRequest,
   syncFileRegistryJson,
   writeJson,
@@ -34,6 +35,62 @@ function safeRead(p) {
 
 function sha256(value) {
   return createHash("sha256").update(value || "", "utf-8").digest("hex");
+}
+
+function hasCurrentVerifiedArtifact({
+  request,
+  executionResult,
+  verifyResult,
+  relativePath,
+  fullPath,
+}) {
+  if (!request?.operation_key || !fs.existsSync(fullPath)) {
+    return false;
+  }
+
+  if (verifyResult?.status !== "pass" || verifyResult?.operation_key !== request.operation_key) {
+    return false;
+  }
+
+  if (executionResult?.operation_key !== request.operation_key || executionResult?.file_path !== relativePath) {
+    return false;
+  }
+
+  const behaviorRequired = Boolean(request.behavior_contract?.required);
+  if (Boolean(executionResult?.behavior_contract_required) !== behaviorRequired) {
+    return false;
+  }
+
+  if (behaviorRequired && executionResult?.behavior_plan_hash !== request.behavior_contract?.plan_hash) {
+    return false;
+  }
+
+  const currentContent = fs.readFileSync(fullPath, "utf-8");
+  const currentContentHash = `sha256:${sha256(currentContent)}`;
+  if (executionResult?.content_hash !== currentContentHash) {
+    return false;
+  }
+
+  return ["generated", "reused_existing"].includes(executionResult?.status || "");
+}
+
+function runCommitStep() {
+  logDivider();
+  logSub("Running commit step...");
+
+  try {
+    execSync(`node "${AI_OS_ROOT}/4_registry_update/run_commit_with_registry.js"`, {
+      stdio: "inherit",
+    });
+  } catch (err) {
+    const stderr = err.stderr?.toString() || "";
+    const stdout = err.stdout?.toString() || "";
+    const combined = stderr + "\n" + stdout + "\n" + (err.message || "");
+    const commitGateBlocked = combined.toLowerCase().includes("commit_gate_blocked");
+
+    logError(commitGateBlocked ? "Commit gate blocked" : "Commit failed");
+    process.exit(1);
+  }
 }
 
 logStep("Execute Agent");
@@ -69,10 +126,26 @@ const fullPath = path.join(PROJECT_ROOT, relativePath);
 const fileExists = fs.existsSync(fullPath);
 const isEditOperation = request.operation_type === "edit_existing_file";
 const isNewFileOperation = request.operation_type === "new_file";
+const existingExecutionResult = readJson(PATHS.executionResultJson, null);
+const existingVerifyResult = readJson(PATHS.verifyResultJson, null);
+
+if (hasCurrentVerifiedArtifact({
+  request,
+  executionResult: existingExecutionResult,
+  verifyResult: existingVerifyResult,
+  relativePath,
+  fullPath,
+})) {
+  logSuccess("Current artifact already verified for this operation");
+  runCommitStep();
+  logSuccess("Execution complete");
+  process.exit(0);
+}
 
 if (fileExists && isNewFileOperation && !request.feedback) {
   logWarn(`File already exists: ${relativePath}`);
   logSub("Skipping model call (no feedback)");
+  const existingContent = fs.readFileSync(fullPath, "utf-8");
 
   writeJson(PATHS.executionResultJson, {
     request_id: request.request_id,
@@ -81,37 +154,16 @@ if (fileExists && isNewFileOperation && !request.feedback) {
     file_path: relativePath,
     model_generation_count: 0,
     attempt_number: 0,
+    behavior_contract_required: Boolean(request.behavior_contract?.required),
+    behavior_plan_hash: request.behavior_contract?.plan_hash || "",
+    content_hash: `sha256:${sha256(existingContent)}`,
     generated_at: new Date().toISOString(),
   });
 
   execSync(`node "${AI_OS_ROOT}/3_execution/7.run_verify.js" "${relativePath}"`, {
     stdio: "inherit",
   });
-
-  try {
-    execSync(`node "${AI_OS_ROOT}/4_registry_update/run_registry_update.js"`, {
-      stdio: "pipe",
-    });
-  } catch (err) {
-    const stderr = err.stderr?.toString() || "";
-    const stdout = err.stdout?.toString() || "";
-    const combined = stderr + "\n" + stdout;
-
-    console.log(combined);
-
-    if (combined.includes("INTERFACE_MISMATCH")) {
-      console.error("INTERFACE_MISMATCH");
-      process.exit(1);
-    }
-
-    logError("Registry update failed (unknown)");
-    process.exit(1);
-  }
-
-  execSync(`node "${AI_OS_ROOT}/5_commit/run_commit.js"`, {
-    stdio: "inherit",
-  });
-
+  runCommitStep();
   process.exit(0);
 }
 
@@ -131,8 +183,18 @@ const systemRegistry = safeRead(PATHS.systemRegistryMd);
 const productStandards = safeRead(PATHS.productStandardsMd);
 const uiPatterns = safeRead(PATHS.uiPatternsMd);
 const designTokens = safeRead(PATHS.designTokensJson);
+const behaviorScenarios = request.behavior_contract?.required ? safeRead(request.memory_refs?.scenarios_md) : "";
+const behaviorStateFlow = request.behavior_contract?.required ? safeRead(request.memory_refs?.state_flow_md) : "";
+const behaviorReconciliationRule = request.behavior_contract?.required ? safeRead(request.memory_refs?.reconciliation_rule_md) : "";
+const behaviorSimulationReport = request.behavior_contract?.required ? safeRead(request.memory_refs?.simulation_report_md) : "";
 const fileRegistryJson = syncFileRegistryJson(AI_OS_ROOT);
 const modelConfig = getModelConfig();
+
+if (request.behavior_contract?.required && request.behavior_contract?.simulation_status !== "pass") {
+  logError("Behavior contract is not ready");
+  console.error("BEHAVIOR_SIMULATION_FAILED");
+  process.exit(1);
+}
 
 logSuccess("Memory loaded");
 logSub("Building prompt...");
@@ -162,6 +224,30 @@ ${designTokens}
 FILE_REGISTRY_JSON:
 ${JSON.stringify(fileRegistryJson, null, 2)}
 
+${request.behavior_contract?.required ? `
+----------------------------------------
+BEHAVIOR CONTRACT
+----------------------------------------
+
+This operation is behavior-sensitive. The artifacts below are mandatory behavioral policy for generation.
+Do not invent alternate state ownership, sync behavior, authority rules, or conflict resolution.
+
+BEHAVIOR_CONTRACT_JSON:
+${JSON.stringify(request.behavior_contract, null, 2)}
+
+SCENARIOS.md:
+${behaviorScenarios}
+
+STATE_FLOW.md:
+${behaviorStateFlow}
+
+RECONCILIATION_RULE.md:
+${behaviorReconciliationRule}
+
+SIMULATION_REPORT.md:
+${behaviorSimulationReport}
+` : ""}
+
 ----------------------------------------
 TASK
 ----------------------------------------
@@ -178,6 +264,7 @@ RULES:
 - If quality_level is standard_passing or higher, avoid obvious placeholder UI
 - Treat TARGET_FILE_REQUEST_JSON.styling_contract as mandatory implementation policy, not a suggestion
 - Treat TARGET_FILE_REQUEST_JSON.capability_dependencies as mandatory capability-boundary policy, not a suggestion
+- If TARGET_FILE_REQUEST_JSON.behavior_contract.required is true, treat SCENARIOS.md, STATE_FLOW.md, RECONCILIATION_RULE.md, and SIMULATION_REPORT.md as mandatory behavioral specification, not advisory context
 - If TARGET_FILE_REQUEST_JSON.capability_dependencies shows a missing or partial capability, stay strictly within the declared required_contracts and prerequisite scope for this file; do not invent missing shared/server/client boundaries
 - If styling_contract.styling_hooks requires className, emit stable className hooks on user-facing layout surfaces
 - If styling_contract.inline_styles is forbidden, do not use inline style objects for user-facing layout styling
@@ -232,6 +319,8 @@ if (failMatch) {
     file_path: relativePath,
     model_generation_count: 1,
     attempt_number: Number(request.feedback?.retry_count || 0) + 1,
+    behavior_contract_required: Boolean(request.behavior_contract?.required),
+    behavior_plan_hash: request.behavior_contract?.plan_hash || "",
     provider: modelResult.provider,
     model: modelResult.model,
     reason,
@@ -259,6 +348,8 @@ if (!fileMatch) {
     file_path: relativePath,
     model_generation_count: 1,
     attempt_number: Number(request.feedback?.retry_count || 0) + 1,
+    behavior_contract_required: Boolean(request.behavior_contract?.required),
+    behavior_plan_hash: request.behavior_contract?.plan_hash || "",
     provider: modelResult.provider,
     model: modelResult.model,
     prompt_hash: `sha256:${sha256(prompt)}`,
@@ -285,6 +376,8 @@ writeJson(PATHS.executionResultJson, {
   file_path: relativePath,
   model_generation_count: 1,
   attempt_number: Number(request.feedback?.retry_count || 0) + 1,
+  behavior_contract_required: Boolean(request.behavior_contract?.required),
+  behavior_plan_hash: request.behavior_contract?.plan_hash || "",
   provider: modelResult.provider,
   model: modelResult.model,
   prompt_hash: `sha256:${sha256(prompt)}`,
@@ -308,15 +401,6 @@ try {
 }
 
 logDivider();
-logSub("Running commit step...");
-
-try {
-  execSync(`node "${AI_OS_ROOT}/4_registry_update/run_commit_with_registry.js"`, {
-    stdio: "inherit",
-  });
-} catch {
-  logError("Commit failed");
-  process.exit(1);
-}
+runCommitStep();
 
 logSuccess("Execution complete");

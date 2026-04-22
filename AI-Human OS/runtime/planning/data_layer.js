@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { assertPlanCompleteness } from "./plan_completeness.js";
 import { assertPlanDecisions, evaluatePlanDecisions } from "./decision_evaluator.js";
+import { assertPlanTraceability, evaluatePlanTraceability } from "./plan_traceability.js";
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -17,16 +18,22 @@ export function getRuntimePaths(aiOsRoot) {
     implementationPlanMd: path.join(aiOsRoot, "1_planning/IMPLEMENTATION_PLAN.md"),
     implementationPlanJson: path.join(dataDir, "implementation_plan.json"),
     planDecisionEvaluationJson: path.join(dataDir, "plan_decision_evaluation.json"),
+    planTraceabilityEvaluationJson: path.join(dataDir, "plan_traceability_evaluation.json"),
     planFeedbackJson: path.join(dataDir, "plan_feedback.json"),
     planReconciliationJson: path.join(dataDir, "plan_reconciliation.json"),
     featuresListFeedbackJson: path.join(dataDir, "features_list_feedback.json"),
     featureRequestFeedbackJson: path.join(dataDir, "feature_request_feedback.json"),
     featureRequestMd: path.join(aiOsRoot, "1_planning/FEATURE_REQUEST.md"),
     featuresListMd: path.join(aiOsRoot, "1_planning/FEATURES_LIST.md"),
+    executionConfirmationMd: path.join(aiOsRoot, "1_planning/EXECUTION_CONFIRMATION.md"),
     planFeedbackMd: path.join(aiOsRoot, "1_planning/PLAN_FEEDBACK.md"),
     planReconciliationMd: path.join(aiOsRoot, "1_planning/PLAN_RECONCILIATION.md"),
     featuresListFeedbackMd: path.join(aiOsRoot, "1_planning/FEATURES_LIST_FEEDBACK.md"),
     featureRequestFeedbackMd: path.join(aiOsRoot, "1_planning/FEATURE_REQUEST_FEEDBACK.md"),
+    scenariosMd: path.join(aiOsRoot, "2_behavior/SCENARIOS.md"),
+    stateFlowMd: path.join(aiOsRoot, "2_behavior/STATE_FLOW.md"),
+    reconciliationRuleMd: path.join(aiOsRoot, "2_behavior/RECONCILIATION_RULE.md"),
+    simulationReportMd: path.join(aiOsRoot, "2_behavior/SIMULATION_REPORT.md"),
     projectContextMd: path.join(aiOsRoot, "memory/PROJECT_CONTEXT.md"),
     systemRegistryMd: path.join(aiOsRoot, "memory/SYSTEM_REGISTRY.md"),
     fileRegistryMd: path.join(aiOsRoot, "memory/FILE_REGISTRY.md"),
@@ -36,6 +43,7 @@ export function getRuntimePaths(aiOsRoot) {
     driftTypesJson: path.join(aiOsRoot, "memory/DRIFT_TYPES.json"),
     driftScoringJson: path.join(aiOsRoot, "memory/DRIFT_SCORING.json"),
     metaSystemStatesJson: path.join(aiOsRoot, "memory/META_SYSTEM_STATES.json"),
+    throughputPolicyJson: path.join(aiOsRoot, "memory/THROUGHPUT_POLICY.json"),
     fileRegistryJson: path.join(dataDir, "file_registry.json"),
     targetRequestMd: path.join(aiOsRoot, "3_execution/TARGET_FILE_REQUEST.md"),
     targetRequestJson: path.join(dataDir, "target_file_request.json"),
@@ -43,8 +51,10 @@ export function getRuntimePaths(aiOsRoot) {
     verifyResultJson: path.join(dataDir, "verify_result.json"),
     cycleMetricsJsonl: path.join(dataDir, "cycle_metrics.jsonl"),
     runMetricsJson: path.join(dataDir, "run_metrics.json"),
+    behaviorStateJson: path.join(dataDir, "behavior_state.json"),
     appliedOperationsJson: path.join(dataDir, "applied_operations.json"),
     executionHistoryJsonl: path.join(dataDir, "execution_history.jsonl"),
+    commitConfirmationMd: path.join(aiOsRoot, "5_commit/COMMIT_CONFIRMATION.md"),
     appliedStateMd: path.join(aiOsRoot, "5_commit/APPLIED_STATE.md"),
   };
 }
@@ -406,15 +416,27 @@ export function syncImplementationPlanJson(aiOsRoot) {
   const paths = getRuntimePaths(aiOsRoot);
   const markdown = safeRead(paths.implementationPlanMd);
   const parsed = parseImplementationPlanMarkdown(markdown);
+  const featuresList = safeRead(paths.featuresListMd);
   const featureRequest = safeRead(paths.featureRequestMd);
   const decisionEvaluation = evaluatePlanDecisions(parsed, {
     aiOsRoot,
     projectRoot: path.dirname(aiOsRoot),
   });
+  const traceabilityEvaluation = evaluatePlanTraceability({
+    featuresListMarkdown: featuresList,
+    featureRequestMarkdown: featureRequest,
+    planData: parsed,
+  });
   writeJson(paths.planDecisionEvaluationJson, decisionEvaluation);
+  writeJson(paths.planTraceabilityEvaluationJson, traceabilityEvaluation);
   assertPlanDecisions(parsed, {
     aiOsRoot,
     projectRoot: path.dirname(aiOsRoot),
+  });
+  assertPlanTraceability({
+    featuresListMarkdown: featuresList,
+    featureRequestMarkdown: featureRequest,
+    planData: parsed,
   });
   assertPlanCompleteness(featureRequest, parsed, {
     projectRoot: path.dirname(aiOsRoot),
@@ -928,6 +950,14 @@ export function buildTargetRequest(baseRequest, options = {}) {
     capability_dependencies: capabilityDependencies,
     cross_file_contracts: crossFileContracts,
     workflow_contracts: workflowContracts,
+    behavior_contract: options.behaviorContract || {
+      required: false,
+      status: "skipped",
+      simulation_status: "not_required",
+      trigger_reasons: [],
+      artifact_paths: {},
+      summary: {},
+    },
     constraints: options.constraints || [
       "no global state mutation",
       "no new systems",
@@ -1092,6 +1122,16 @@ export function renderTargetRequestMarkdown(request) {
     `- server_authority_boundary: ${request.workflow_contracts?.server_authority_boundary || "none"}`,
     `- success_surface: ${request.workflow_contracts?.success_surface || "none"}`,
     `- failure_surface: ${request.workflow_contracts?.failure_surface || "none"}`,
+    "",
+    "## Behavior Contract",
+    `- required: ${request.behavior_contract?.required ? "true" : "false"}`,
+    `- status: ${request.behavior_contract?.status || "skipped"}`,
+    `- simulation_status: ${request.behavior_contract?.simulation_status || "not_required"}`,
+    `- trigger_reasons: ${(request.behavior_contract?.trigger_reasons || []).join(", ") || "none"}`,
+    `- scenarios_md: ${request.behavior_contract?.artifact_paths?.scenarios_md || "none"}`,
+    `- state_flow_md: ${request.behavior_contract?.artifact_paths?.state_flow_md || "none"}`,
+    `- reconciliation_rule_md: ${request.behavior_contract?.artifact_paths?.reconciliation_rule_md || "none"}`,
+    `- simulation_report_md: ${request.behavior_contract?.artifact_paths?.simulation_report_md || "none"}`,
     "",
     "## Constraints",
     ...(request.constraints || []).map(item => `- ${item}`),

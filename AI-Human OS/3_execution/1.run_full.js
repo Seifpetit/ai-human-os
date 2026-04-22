@@ -7,12 +7,19 @@ import {
   getRuntimePaths,
   readJson,
   readTargetRequest,
+  safeRead,
   writeJson,
   writeJsonl,
   writeTargetRequest,
 } from "../runtime/planning/data_layer.js";
+import { assertExecutionConfirmationApproved } from "../runtime/planning/execution_confirmation.js";
 import { buildCycleMetric, buildRunSummary, extractDriftViolations } from "../runtime/recovery/execution_metrics.js";
 import { buildRetryFeedback, classifyFailure } from "../runtime/recovery/retry_feedback.js";
+import {
+  buildExecutionFailureAssessment,
+  getAdaptiveRetryPolicy,
+  getRetryLimitForClassification,
+} from "../runtime/throughput/throughput_policy.js";
 import {
   logDivider,
   logError,
@@ -29,6 +36,7 @@ const RUN_STARTED_AT = new Date().toISOString();
 const RUN_START_MS = Date.now();
 const MAX_CYCLES = 50;
 const MAX_RETRIES = 5;
+const ADAPTIVE_RETRY_POLICY = getAdaptiveRetryPolicy(AI_OS_ROOT);
 const cycleRecords = [];
 
 let runStatus = "running";
@@ -61,6 +69,18 @@ function normalizeSuggestedNextStep({ classification }) {
     "workflow_contract_mismatch",
     "plan_incomplete",
   ]);
+
+  if (classification === "execution_confirmation_missing" || classification === "execution_confirmation_pending") {
+    return "Review AI-Human OS/1_planning/EXECUTION_CONFIRMATION.md, update Approval Status, then rerun: node run_ai.js";
+  }
+
+  if (classification === "commit_confirmation_missing" || classification === "commit_confirmation_pending") {
+    return "Review AI-Human OS/5_commit/COMMIT_CONFIRMATION.md, update Approval Status, then rerun: node run_ai.js";
+  }
+
+  if (classification === "behavior_contract_invalid") {
+    return "Review AI-Human OS/2_behavior/SCENARIOS.md, STATE_FLOW.md, RECONCILIATION_RULE.md, and SIMULATION_REPORT.md, then rerun: node run_ai.js";
+  }
 
   if (schemaUpgradeClasses.has(classification)) {
     return "Run: node run_schema_upgrade.js";
@@ -109,6 +129,30 @@ function openCycle(cycleNumber) {
     request: null,
     feature: "",
     driftTypes: new Set(),
+    failureSignatureCounts: {},
+    lowestErrorCount: Number.POSITIVE_INFINITY,
+  };
+}
+
+function trackFailureAssessment(activeCycle, failureAssessment) {
+  if (!activeCycle || !failureAssessment?.signature) {
+    return {
+      sameSignatureCount: 0,
+      improved: false,
+    };
+  }
+
+  const sameSignatureCount = (activeCycle.failureSignatureCounts[failureAssessment.signature] || 0) + 1;
+  activeCycle.failureSignatureCounts[failureAssessment.signature] = sameSignatureCount;
+
+  const improved = failureAssessment.error_count < activeCycle.lowestErrorCount;
+  if (improved) {
+    activeCycle.lowestErrorCount = failureAssessment.error_count;
+  }
+
+  return {
+    sameSignatureCount,
+    improved,
   };
 }
 
@@ -197,6 +241,18 @@ ensureMetricArtifacts();
 try {
   logDivider();
   logStep("Preflight");
+  logSub("Checking execution confirmation gate...");
+
+  const executionConfirmation = safeRead(PATHS.executionConfirmationMd);
+  if (!executionConfirmation.trim()) {
+    throw new Error(
+      "EXECUTION_GATE_BLOCKED\n- EXECUTION_CONFIRMATION.md is missing\n- Run node run_planning.js\n- Review AI-Human OS/1_planning/EXECUTION_CONFIRMATION.md\n- Change Approval Status to approved before running node run_ai.js"
+    );
+  }
+
+  assertExecutionConfirmationApproved(executionConfirmation);
+  logSuccess("Execution confirmation approved");
+
   logSub("Running state validation...");
 
   execSync(
@@ -209,13 +265,17 @@ try {
   const stderr = err.stderr?.toString() || "";
   const stdout = err.stdout?.toString() || "";
   const combined = `${stderr}\n${stdout}\n${err.message || ""}`.trim();
-  logError("State validation failed");
+  const normalized = combined.toLowerCase();
+  const gateBlocked = normalized.includes("execution_gate_blocked") || normalized.includes("execution_blocked");
+  logError(gateBlocked ? "Execution gate blocked" : "State validation failed");
   if (stderr || stdout) {
     console.log(stderr + stdout);
   }
-  runStatus = "preflight_failed";
+  runStatus = gateBlocked ? "execution_gate_blocked" : "preflight_failed";
   updateRunFailure(
-    combined.toLowerCase().includes("plan_incomplete") ? "plan_incomplete" : "unknown_failure",
+    gateBlocked
+      ? (normalized.includes("missing") ? "execution_confirmation_missing" : "execution_confirmation_pending")
+      : (normalized.includes("plan_incomplete") ? "plan_incomplete" : "unknown_failure"),
     combined || "State validation failed before execution started."
   );
   writeRunSummary(cycleRecords);
@@ -338,6 +398,53 @@ while (true) {
       break;
     }
 
+    if (classification === "behavior_contract_invalid") {
+      logError("Behavior contract blocked execution");
+      runStatus = "behavior_gate_blocked";
+      updateRunFailure(
+        classification,
+        "2_behavior simulation did not produce a valid passing behavioral contract for the current feature."
+      );
+      finalizeCycle({
+        activeCycle,
+        cycleRecords,
+        finalStatus: "failed",
+        classification,
+        verifyResult,
+        terminalReason: "behavior_blocked",
+        converged: false,
+      });
+      writeRunSummary(cycleRecords);
+      printFailureSummary({
+        classification,
+        executionResult,
+        verifyResult,
+        fallbackCause: runFailureCause,
+      });
+      activeCycle = null;
+      break;
+    }
+
+    if (classification === "commit_confirmation_missing" || classification === "commit_confirmation_pending") {
+      logError("Commit gate blocked");
+      runStatus = "commit_gate_blocked";
+      updateRunFailure(
+        classification,
+        classification === "commit_confirmation_missing"
+          ? "COMMIT_CONFIRMATION.md is missing for the current verified artifact."
+          : "COMMIT_CONFIRMATION.md is waiting for human approval."
+      );
+      writeRunSummary(cycleRecords);
+      printFailureSummary({
+        classification,
+        executionResult,
+        verifyResult,
+        fallbackCause: runFailureCause,
+      });
+      activeCycle = null;
+      break;
+    }
+
     if (errorMsg.includes("PLAN_BLOCKED")) {
       logError("Plan blocked by unsatisfied dependencies");
       runStatus = "failed";
@@ -366,14 +473,26 @@ while (true) {
     }
 
     if (classification !== "unknown_failure") {
-      retryCount++;
+      const failureAssessment = buildExecutionFailureAssessment({
+        classification,
+        executionResult,
+        verifyResult,
+      });
+      const retryTracking = trackFailureAssessment(activeCycle, failureAssessment);
+      const retryLimit = ADAPTIVE_RETRY_POLICY.enabled === false
+        ? MAX_RETRIES
+        : Math.min(MAX_RETRIES, getRetryLimitForClassification(ADAPTIVE_RETRY_POLICY, classification));
+      const stalled = Boolean(ADAPTIVE_RETRY_POLICY.enabled) &&
+        Boolean(ADAPTIVE_RETRY_POLICY.early_stop_if_no_improvement) &&
+        retryTracking.sameSignatureCount > Number(ADAPTIVE_RETRY_POLICY.max_same_failure_signature || 2);
+      const nextRetryCount = retryCount + 1;
 
-      if (retryCount > MAX_RETRIES) {
-        logError("Max retries reached -> stopping");
+      if (stalled) {
+        logError("Retry loop stalled on the same failure signature");
         runStatus = "failed";
         updateRunFailure(
           classification,
-          "Self-healing retries were exhausted without converging on a valid file."
+          "Self-healing retries stalled on the same failure signature without improving."
         );
         finalizeCycle({
           activeCycle,
@@ -381,7 +500,7 @@ while (true) {
           finalStatus: "failed",
           classification,
           verifyResult,
-          terminalReason: "max_retries",
+          terminalReason: "stalled_retry_loop",
           converged: false,
         });
         writeRunSummary(cycleRecords);
@@ -395,8 +514,37 @@ while (true) {
         break;
       }
 
+      if (nextRetryCount > retryLimit) {
+        logError("Retry limit reached -> stopping");
+        runStatus = "failed";
+        updateRunFailure(
+          classification,
+          "Self-healing retries were exhausted without converging on a valid file."
+        );
+        finalizeCycle({
+          activeCycle,
+          cycleRecords,
+          finalStatus: "failed",
+          classification,
+          verifyResult,
+          terminalReason: "retry_limit_reached",
+          converged: false,
+        });
+        writeRunSummary(cycleRecords);
+        printFailureSummary({
+          classification,
+          executionResult,
+          verifyResult,
+          fallbackCause: runFailureCause,
+        });
+        activeCycle = null;
+        break;
+      }
+
+      retryCount = nextRetryCount;
+
       logWarn("Self-healing triggered");
-      logSub(`Retry ${retryCount}/${MAX_RETRIES}`);
+      logSub(`Retry ${retryCount}/${retryLimit}`);
 
       const currentRequest = readJson(PATHS.targetRequestJson, null);
 

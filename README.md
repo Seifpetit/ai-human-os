@@ -15,8 +15,11 @@ High-level flow:
 
 ```text
 Human intent -> planning intake -> approval -> staged planning
--> deterministic plan compiler -> one-file execution cycles
--> verification -> registry update -> runtime-state commit -> metrics
+-> deterministic plan compiler -> execution confirmation gate
+-> selective behavior simulation for stateful operations
+-> one-file execution cycles
+-> verification -> commit confirmation gate
+-> registry update -> runtime-state commit -> metrics
 ```
 
 The canonical flow description lives in [AI-Human OS/HFD.md](AI-Human%20OS/HFD.md).
@@ -77,11 +80,27 @@ Planning:
 node run_planning.js
 ```
 
+Gate 2 review:
+
+```text
+Review AI-Human OS/1_planning/EXECUTION_CONFIRMATION.md
+If Approval Status is not already approved, change it to approved
+```
+
+Gate 3 review:
+
+```text
+Review AI-Human OS/5_commit/COMMIT_CONFIRMATION.md
+If Approval Status is not already approved, change it to approved
+```
+
 Execution:
 
 ```bash
 node run_ai.js
 ```
+
+For operations that touch server authority, shared contracts, state ownership, or sync boundaries, the operator now runs the `AI-Human OS/2_behavior/` simulation chain before file generation and blocks execution if the simulation report does not pass.
 
 Schema upgrade path:
 
@@ -108,9 +127,21 @@ The reporter treats these files as the canonical metric inputs:
 
 `node run_ai.js` now initializes those artifacts at run start, so metrics exist even for zero-cycle or preflight-failed runs.
 
+## Throughput Policy
+
+Throughput is now controlled by `AI-Human OS/memory/THROUGHPUT_POLICY.json`.
+
+- Gate 2 can auto-approve narrow, low-drift compiled plans
+- Gate 3 can auto-approve low-risk verified artifacts
+- execution retries are bounded by classification-specific limits and stop early when the same failure signature repeats
+
+The gates still exist. Auto-approval only changes who satisfies the gate: human or deterministic policy. The decision is written directly into `EXECUTION_CONFIRMATION.md` and `COMMIT_CONFIRMATION.md`.
+
 ## Notes
 
 - The repo currently has no formal test script in `package.json`.
 - Pipeline state and metrics are persisted under `AI-Human OS/data/`.
+- Planning compiler evaluations include decision and cross-stage traceability artifacts under `AI-Human OS/data/`.
+- Selective behavior-simulation state is persisted under `AI-Human OS/data/behavior_state.json`.
 - Human-readable metrics output is generated under `AI-Human OS/data/metrics_report/`.
 - The generated diagrams are stored in `AI-Human OS/.docs/`.

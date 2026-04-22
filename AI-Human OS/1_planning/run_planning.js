@@ -3,8 +3,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import { getModelConfig, runModel } from "../runtime/model/model_adapter.js";
-import { getRuntimePaths, safeRead, syncImplementationPlanJson } from "../runtime/planning/data_layer.js";
+import { getRuntimePaths, readJson, safeRead, syncImplementationPlanJson } from "../runtime/planning/data_layer.js";
+import { renderExecutionConfirmationMarkdown } from "../runtime/planning/execution_confirmation.js";
 import { reconcileImplementationPlanMarkdown, renderPlanReconciliationMarkdown } from "../runtime/planning/plan_reconciler.js";
+import { evaluateExecutionGatePolicy } from "../runtime/throughput/throughput_policy.js";
 import {
   assessRetryProgress,
   getPlanningRetryPolicy,
@@ -54,11 +56,67 @@ function stripMarkdownFences(value) {
   return fenced ? fenced[1].trim() : trimmed;
 }
 
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractBulletItems(markdown, heading) {
+  const escapedHeading = escapeRegExp(heading);
+  const block = markdown.match(new RegExp(`### ${escapedHeading}\\r?\\n([\\s\\S]*?)(?:\\r?\\n### |$)`, "i"))?.[1] || "";
+
+  return block
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => /^- /.test(line))
+    .map(line => line.replace(/^- /, "").trim())
+    .filter(Boolean);
+}
+
+function isNoneList(items) {
+  if (!items || items.length === 0) {
+    return true;
+  }
+
+  return items.length === 1 && /^none$/i.test(items[0]);
+}
+
 function assertIntentApproved(markdown) {
   const status = markdown.match(/Approval Status:\s*(?:\r?\n)?-\s*(.+)/i)?.[1]?.trim().toLowerCase() || "";
   if (status !== "approved") {
     throw new Error(
       "PLANNING_BLOCKED\n- INTENT_CONFIRMATION.md is not approved\n- Review AI-Human OS/1_planning/INTENT_CONFIRMATION.md\n- Change Approval Status to approved before running node run_planning.js"
+    );
+  }
+
+  const ambiguityResolutionStatus = markdown.match(/Ambiguity Resolution Status:\s*(?:\r?\n)?-\s*(.+)/i)?.[1]?.trim().toLowerCase() || "";
+  const ambiguities = extractBulletItems(markdown, "Ambiguities Detected");
+  const questions = extractBulletItems(markdown, "Questions For Human Confirmation");
+  const assumptions = [
+    ...extractBulletItems(markdown, "Assumptions I Am Making To Proceed"),
+    ...extractBulletItems(markdown, "Assumptions I Am Making"),
+  ];
+  const hasAmbiguitySignals = !isNoneList(ambiguities) || !isNoneList(questions) || !isNoneList(assumptions);
+  const allowedResolutionStates = new Set(["clear", "assumptions_accepted", "human_corrected"]);
+
+  if (!ambiguityResolutionStatus) {
+    if (hasAmbiguitySignals) {
+      throw new Error(
+        "PLANNING_BLOCKED\n- INTENT_CONFIRMATION.md contains assumptions or ambiguity without explicit human resolution\n- Add Ambiguity Resolution Status to INTENT_CONFIRMATION.md\n- Use one of: clear, assumptions_accepted, human_corrected\n- Then rerun node run_planning.js"
+      );
+    }
+
+    return;
+  }
+
+  if (!allowedResolutionStates.has(ambiguityResolutionStatus)) {
+    throw new Error(
+      "PLANNING_BLOCKED\n- INTENT_CONFIRMATION.md ambiguity review is incomplete\n- Review ambiguities, questions, and assumptions in AI-Human OS/1_planning/INTENT_CONFIRMATION.md\n- Change Ambiguity Resolution Status to clear, assumptions_accepted, or human_corrected before running node run_planning.js"
+    );
+  }
+
+  if (ambiguityResolutionStatus === "clear" && hasAmbiguitySignals) {
+    throw new Error(
+      "PLANNING_BLOCKED\n- Ambiguity Resolution Status is set to clear but the confirmation doc still lists ambiguity/questions/assumptions\n- Either resolve those items in the doc or change Ambiguity Resolution Status to assumptions_accepted or human_corrected\n- Then rerun node run_planning.js"
     );
   }
 }
@@ -378,6 +436,7 @@ function isRetriablePlanFailure(error) {
     "FEATURE_REQUEST_INVALID",
     "PLAN_INVALID",
     "PLAN_DECISION_INVALID",
+    "PLAN_TRACEABILITY_INVALID",
     "PLAN_INCOMPLETE",
   ].includes(code);
 }
@@ -652,7 +711,7 @@ function generateValidatedImplementationPlan({
     writeText(PATHS.implementationPlanMd, implementationPlan);
 
     try {
-      syncImplementationPlanJson(AI_OS_ROOT);
+      const planData = syncImplementationPlanJson(AI_OS_ROOT);
       writePlanFeedbackArtifacts({
         stage: "implementation_plan",
         status: "resolved",
@@ -664,7 +723,11 @@ function generateValidatedImplementationPlan({
         retry_policy: retryPolicy,
         next_action: "proceed_to_execution",
       });
-      return implementationPlan;
+      return {
+        markdown: implementationPlan,
+        planData,
+        reconciliationReport: null,
+      };
     } catch (error) {
       lastError = error;
       const parsedFailure = parsePlanningFailure(error);
@@ -676,7 +739,7 @@ function generateValidatedImplementationPlan({
         writeText(PATHS.implementationPlanMd, reconciliationReport.reconciled_markdown);
 
         try {
-          syncImplementationPlanJson(AI_OS_ROOT);
+          const planData = syncImplementationPlanJson(AI_OS_ROOT);
           writePlanFeedbackArtifacts({
             stage: parsedFailure.stage || "implementation_plan",
             status: "resolved_via_reconciliation",
@@ -690,7 +753,11 @@ function generateValidatedImplementationPlan({
             retry_policy: retryPolicy,
             next_action: "proceed_to_execution",
           });
-          return reconciliationReport.reconciled_markdown;
+          return {
+            markdown: reconciliationReport.reconciled_markdown,
+            planData,
+            reconciliationReport,
+          };
         } catch (reconciledError) {
           lastError = reconciledError;
         }
@@ -796,7 +863,10 @@ try {
   });
   logSuccess("FEATURE_REQUEST.md updated");
 
-  generateValidatedImplementationPlan({
+  const {
+    planData,
+    reconciliationReport,
+  } = generateValidatedImplementationPlan({
     planPrompt,
     featureRequest,
     implementationPlanTemplate,
@@ -804,9 +874,38 @@ try {
   });
   logSuccess("IMPLEMENTATION_PLAN.md updated");
 
+  const executionGateAssessment = evaluateExecutionGatePolicy({
+    aiOsRoot: AI_OS_ROOT,
+    intentConfirmation,
+    planData,
+    reconciliationReport,
+    decisionEvaluation: readJson(PATHS.planDecisionEvaluationJson, null),
+    traceabilityEvaluation: readJson(PATHS.planTraceabilityEvaluationJson, null),
+  });
+
+  writeText(
+    PATHS.executionConfirmationMd,
+    renderExecutionConfirmationMarkdown({
+      intentConfirmation,
+      planData,
+      reconciliationReport,
+      approval: executionGateAssessment.approval,
+      throughputAssessment: executionGateAssessment,
+    })
+  );
+  logSuccess("EXECUTION_CONFIRMATION.md updated");
+
+  if (executionGateAssessment.auto_approved) {
+    logSuccess(`Gate 2 auto-approved by throughput policy (score ${executionGateAssessment.score}/${executionGateAssessment.threshold})`);
+  } else {
+    logSub(`Gate 2 requires human review (score ${executionGateAssessment.score}/${executionGateAssessment.threshold})`);
+  }
+
   logDivider();
   logSuccess("Planning complete");
-  logSub("Next step: node run_ai.js");
+  logSub("Review AI-Human OS/1_planning/EXECUTION_CONFIRMATION.md");
+  logSub("If Approval Status is not already approved and it still matches the approved intent, change Approval Status to approved");
+  logSub("Then run: node run_ai.js");
   process.exit(0);
 } catch (err) {
   logError("Planning failed");

@@ -8,8 +8,9 @@ Write rough thoughts here first. Bullets, fragments, and incomplete ideas are fi
 Workflow:
 1. Fill this block
 2. Run `node run_planning_intake.js`
-3. Review and approve `AI-Human OS/1_planning/INTENT_CONFIRMATION.md`
-4. Run `node run_planning.js`
+3. Review `AI-Human OS/1_planning/INTENT_CONFIRMATION.md`, including any ambiguity questions and assumptions
+4. Resolve the ambiguity status there, then approve it
+5. Run `node run_planning.js`
 
 Do NOT try to speak like a planner.
 Speak like the person who knows what this project should become right now.
@@ -55,44 +56,72 @@ You do need clear intent.
 [ HUMAN SCOPE INPUT START ]
 
 1. PROJECT IN ONE BREATH
-<What is this project in plain language?
-1-3 lines. Say what it is, not how it is implemented.>
+Gravity Ball is a competitive gravity-based ball game that should later support multiplayer.
+Players do not control the ball directly. They influence it only by clicking on the court to create a gravity hole that pulls the ball.
+Scoring comes from bending the ball into a goal, not from direct ball movement controls.
 
 2. NEXT PLAYABLE WIN
-<If this planning pass succeeds, what will a player be able to do or experience next?
-Keep it concrete and player-visible.>
+One player can open the game in the browser, see a simple court with a moving ball, click somewhere on the court to create a visible gravity hole, and score by pulling the ball into a goal.
+This pass should prove the core interaction and scoring loop clearly.
 
 3. PLAYER PROMISE RIGHT NOW
-<What should feel most true in this version?
-Examples: simple, fast to try, easy to understand, competitive, social, reliable, atmospheric.>
+- simple
+- readable
+- immediate to try
+- satisfying physics influence
+- focused on the core mechanic, not systems
 
 4. MUST INCLUDE NOW
-<List the must-have player-visible capabilities for this phase.
-Short bullets are best.>
+- a visible court and one visible ball
+- click or tap on the court creates a visible gravity hole at that location
+- the gravity hole clearly influences the ball's movement
+- the gravity hole is the only way the player can influence the ball
+- a simple goal and score update when the ball reaches it
+- a clear reset or continue flow after a score so the loop can be repeated
 
 5. MUST STAY OUT NOW
-<List anything that must not enter scope yet.
-Include systems, polish, backend depth, edge cases, or "nice to have" work.>
+- real multiplayer networking
+- rooms, matchmaking, or lobby systems
+- server sync and latency handling
+- chat, accounts, profiles, or progression
+- cosmetic polish beyond what is needed to read the mechanic
+- multiple game modes
+- multiple balls
+- advanced menus or settings
 
 6. BUDGET AND STAGE
 Project Stage:
-<prototype | v1 | stabilization | scale-up>
+prototype
 
 Feature Budget:
-<How many features should this planning pass allow at most?>
+1
 
 Complexity Budget:
-<What level of complexity is acceptable right now?
-What should the planner actively avoid?>
+Keep this to one clean mechanic slice: one court, one ball, one scoring rule, and one player-visible interaction.
+Actively avoid network architecture, broad game flow, deep UI systems, or anything that does not directly prove click -> gravity hole -> ball influence -> score.
 
 7. HARD CONSTRAINTS
-<Technical, product, team, time, simplicity, or architecture constraints the planner must obey.>
+- browser-first
+- the player must never drag, push, or directly move the ball
+- no keyboard control as the main mechanic
+- clicking or tapping to create a gravity hole is the only control input for influencing the ball
+- scoring must come from where the ball ends up on the court
+- keep the implementation simple enough to validate the loop quickly
+- do not introduce unrelated systems just because the long-term game will be multiplayer
+- choices made now should not block a later server-authoritative multiplayer version
 
 8. FUTURE, BUT NOT NOW
-<What matters later, but should be intentionally deferred in this pass?>
+- real multiplayer play with multiple people affecting the same ball
+- server-authoritative physics and sync
+- conflict resolution between multiple simultaneous gravity holes from different players
+- room creation and joining
+- better scoring rules, rounds, and match structure
+- balancing, polish, audiovisual juice, and progression
 
 9. OPTIONAL NOTES OR CORRECTIONS
-<Anything the machine might otherwise misunderstand about your intent>
+The core identity of the game is that the player influences the ball indirectly by placing gravity holes on the court.
+Do not reinterpret the game as direct ball control, paddle control, character control, or a standard sports game.
+If a simplification is needed, simplify everything except that core rule.
 
 [ HUMAN SCOPE INPUT END ]
 

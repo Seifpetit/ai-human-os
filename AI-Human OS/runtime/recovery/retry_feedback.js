@@ -40,6 +40,12 @@ export function classifyFailure(input = {}) {
   const message = lower(text);
 
   if (message.includes("capability_contract_coherence")) return "missing_capability_contract";
+  if (message.includes("commit_gate_blocked")) {
+    return message.includes("not approved") ? "commit_confirmation_pending" : "commit_confirmation_missing";
+  }
+  if (message.includes("behavior_simulation_failed") || message.includes("behavior_generation_invalid")) {
+    return "behavior_contract_invalid";
+  }
   if (message.includes("interface_mismatch")) return "interface_mismatch";
   if (message.includes("ui_surface_coherence")) return "ui_surface_mismatch";
   if (message.includes("cross_file_contract_coherence")) return "cross_file_contract_mismatch";
@@ -62,6 +68,9 @@ export function buildRetryFeedback({ classification, retryCount }) {
     syntax_failure: ["syntax", "export_shape"],
     registry_conflict: ["required_interface", "allowed_symbols"],
     plan_incomplete: ["implementation_plan"],
+    behavior_contract_invalid: ["scenarios", "state_flow", "reconciliation_rule", "simulation_report"],
+    commit_confirmation_missing: ["human_review_gate"],
+    commit_confirmation_pending: ["human_review_gate"],
     unknown_failure: ["minimal_change"],
   };
 

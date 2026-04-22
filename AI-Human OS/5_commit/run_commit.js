@@ -7,6 +7,7 @@ import {
   writeJson,
   writeJsonl,
 } from "../runtime/planning/data_layer.js";
+import { ensureCommitConfirmationApproved } from "../runtime/commit/commit_confirmation.js";
 import {
   logStep,
   logSub,
@@ -19,10 +20,27 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const COMMIT_DIR = path.dirname(__filename);
 const AI_OS_ROOT = path.dirname(COMMIT_DIR);
+const PROJECT_ROOT = path.dirname(AI_OS_ROOT);
 const PATHS = getRuntimePaths(AI_OS_ROOT);
 
 logStep("Commit Step");
 logSub("Loading files...");
+
+try {
+  const context = ensureCommitConfirmationApproved({
+    aiOsRoot: AI_OS_ROOT,
+    projectRoot: PROJECT_ROOT,
+  });
+  if (context.approval?.source === "throughput_policy_auto_approve") {
+    logSuccess("Commit confirmation auto-approved");
+  } else {
+    logSuccess("Commit confirmation approved");
+  }
+} catch (err) {
+  logError("Commit gate blocked");
+  console.error(err.message);
+  process.exit(1);
+}
 
 const request = readTargetRequest(AI_OS_ROOT);
 const verifyResult = readJson(PATHS.verifyResultJson, null);

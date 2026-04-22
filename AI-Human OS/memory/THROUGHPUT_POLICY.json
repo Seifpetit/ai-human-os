@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "gate2_auto_approve": {
+    "enabled": true,
+    "min_score": 90,
+    "max_total_cycles": 8,
+    "max_touched_areas": 2,
+    "max_reconciliation_fixes": 1,
+    "block_on_assumptions_carried_forward": true,
+    "block_on_scope_creep": true,
+    "block_on_traceability_gaps": true
+  },
+  "gate3_auto_approve": {
+    "enabled": true,
+    "min_score": 85,
+    "max_attempt_number": 1,
+    "max_file_size_bytes": 25000,
+    "manual_review_on_behavior_sensitive": false,
+    "block_on_non_skipped_warnings": true,
+    "allowed_skipped_warning_checks": [
+      "export_detected",
+      "semantic_requirements",
+      "ast_contracts",
+      "ui_surface_coherence",
+      "cross_file_contract_coherence",
+      "workflow_state_coherence",
+      "browser_scaffold_coherence"
+    ]
+  },
+  "adaptive_retry": {
+    "enabled": true,
+    "max_retries_default": 3,
+    "max_retries_by_classification": {
+      "syntax_failure": 2,
+      "ast_contract_mismatch": 2,
+      "interface_mismatch": 3,
+      "ui_surface_mismatch": 2,
+      "cross_file_contract_mismatch": 2,
+      "workflow_contract_mismatch": 2,
+      "registry_conflict": 2,
+      "plan_incomplete": 1,
+      "missing_capability_contract": 1,
+      "behavior_contract_invalid": 1,
+      "unknown_failure": 1
+    },
+    "early_stop_if_no_improvement": true,
+    "max_same_failure_signature": 2
+  }
+}

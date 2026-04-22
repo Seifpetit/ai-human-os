@@ -4,6 +4,7 @@ import { execSync } from "child_process";
 
 import { getImplementationPlan, getNextCycle } from "./4.parse_plan.js";
 import { enrichRequest } from "./5.enrich_request.js";
+import { ensureBehaviorSimulation } from "../runtime/behavior/behavior_simulation.js";
 import {
   getRuntimePaths,
   readJson,
@@ -143,8 +144,50 @@ if (existingRequest?.feedback && existingRequest.operation_key === next.operatio
   });
 }
 
+request = {
+  ...request,
+  behavior_contract: request.behavior_contract || {
+    required: false,
+    status: "pending_evaluation",
+    simulation_status: "unknown",
+    trigger_reasons: [],
+    capability_labels: [],
+    artifact_paths: {},
+    summary: {},
+  },
+};
+
 writeTargetRequest(AI_OS_ROOT, request);
 logSuccess("TARGET_FILE_REQUEST ready");
+
+try {
+  const behavior = ensureBehaviorSimulation({
+    aiOsRoot: AI_OS_ROOT,
+    planData,
+    featureRequestMarkdown: featureRequest,
+    baseRequest,
+  });
+
+  request = {
+    ...request,
+    behavior_contract: behavior.contract,
+    memory_refs: {
+      ...(request.memory_refs || {}),
+      ...behavior.memoryRefs,
+    },
+  };
+  writeTargetRequest(AI_OS_ROOT, request);
+
+  if (behavior.contract.required) {
+    logSuccess(`Behavior simulation ${behavior.contract.status}`);
+  } else {
+    logSub("Behavior simulation skipped for this operation");
+  }
+} catch (err) {
+  logError("Behavior simulation blocked execution");
+  console.error(err.message);
+  process.exit(1);
+}
 
 logDivider();
 logSub("Running execute agent...");

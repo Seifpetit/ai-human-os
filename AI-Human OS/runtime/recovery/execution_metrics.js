@@ -35,10 +35,15 @@ export function extractDriftViolations({ verifyResult, classification }) {
       case "missing_capability_contract":
       case "registry_conflict":
         return ["DEPENDENCY_DRIFT"];
+      case "behavior_contract_invalid":
+        return ["STATE_DRIFT"];
       case "workflow_contract_mismatch":
         return ["ARCHITECTURE_DRIFT"];
       case "plan_incomplete":
         return ["PLAN_DRIFT"];
+      case "commit_confirmation_missing":
+      case "commit_confirmation_pending":
+        return [];
       case "unknown_failure":
         return ["EXECUTION_DRIFT"];
       default:

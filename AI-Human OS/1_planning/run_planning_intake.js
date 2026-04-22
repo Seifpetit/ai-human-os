@@ -65,9 +65,16 @@ Return ONLY INTENT_CONFIRMATION.md using this exact structure:
 Approval Status:
 - needs_human_review
 
+Ambiguity Resolution Status:
+- pending_review
+
 What to do:
 - Review the machine understanding below.
-- If it is accurate enough for planning, change Approval Status to \`approved\`.
+- If the machine listed ambiguities, questions, or assumptions below, do not approve until you have confronted them.
+- If there are no ambiguities/questions/assumptions that need correction, change Ambiguity Resolution Status to \`clear\`.
+- If the machine assumptions are acceptable as written, change Ambiguity Resolution Status to \`assumptions_accepted\`.
+- If you edited the doc to resolve or correct ambiguity, change Ambiguity Resolution Status to \`human_corrected\`.
+- Change Approval Status to \`approved\` only after Ambiguity Resolution Status is no longer \`pending_review\`.
 - If it is wrong, edit this file directly or revise 1_features_planning_prompt.txt and rerun \`node run_planning_intake.js\`.
 - Do not run \`node run_planning.js\` until Approval Status is \`approved\`.
 
@@ -99,8 +106,14 @@ Human Corrections:
 ### Deferred Until Later
 - <item>
 
-### Assumptions I Am Making
-- <item>
+### Ambiguities Detected
+- <item or "none">
+
+### Questions For Human Confirmation
+- <specific question or "none">
+
+### Assumptions I Am Making To Proceed
+- <item or "none">
 
 ### Open Questions Or Risks
 - <item or "none">
@@ -109,9 +122,11 @@ Rules:
 - keep language plain and compact
 - keep sections concrete
 - preserve hard exclusions
-- if the human intent is rough, resolve it into the narrowest safe understanding
+- if the human intent is rough, narrow the wording safely but do not silently resolve meaningful ambiguity
+- if scope, priority, exclusions, player promise, budget, or constraints are ambiguous, surface that ambiguity explicitly
+- write concrete human-answerable questions instead of quietly choosing a direction
 - do not generate features, files, or implementation steps
-- do not leave out uncertainties; list them under Open Questions Or Risks
+- do not leave out uncertainties; list them under the ambiguity, question, assumption, or risk sections above
 
 ----------------------------------------
 SYSTEM MEMORY
@@ -144,6 +159,7 @@ try {
   logDivider();
   logSuccess("Planning intake complete");
   logSub("Review AI-Human OS/1_planning/INTENT_CONFIRMATION.md");
+  logSub("Resolve ambiguity questions/assumptions, then set Ambiguity Resolution Status");
   logSub("When approved, change Approval Status to approved");
   logSub("Then run: node run_planning.js");
   process.exit(0);

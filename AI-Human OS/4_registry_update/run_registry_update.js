@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
+import { ensureCommitConfirmationApproved } from "../runtime/commit/commit_confirmation.js";
 import {
   getRuntimePaths,
   readTargetRequest,
@@ -24,6 +25,18 @@ const PROJECT_ROOT = path.dirname(AI_OS_ROOT);
 const PATHS = getRuntimePaths(AI_OS_ROOT);
 
 logStep("Registry Update");
+
+try {
+  ensureCommitConfirmationApproved({
+    aiOsRoot: AI_OS_ROOT,
+    projectRoot: PROJECT_ROOT,
+  });
+  logSuccess("Commit confirmation approved");
+} catch (err) {
+  logError("Commit gate blocked");
+  console.error(err.message);
+  process.exit(1);
+}
 
 const request = readTargetRequest(AI_OS_ROOT);
 let registry = syncFileRegistryJson(AI_OS_ROOT);
