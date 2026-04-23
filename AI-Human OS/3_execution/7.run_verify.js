@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import { execFileSync } from "child_process";
 import { fileURLToPath } from "url";
+import { createRequire } from "module";
 
 import {
   getRuntimePaths,
@@ -10,6 +11,7 @@ import {
   readTargetRequest,
   writeJson,
 } from "../runtime/planning/data_layer.js";
+import { resolveProjectRoot } from "../runtime/workspace/workspace_config.js";
 import { checkBrowserScaffoldCoherence } from "../runtime/verification/browser_scaffold_coherence.js";
 import { checkCapabilityContractCoherence } from "../runtime/verification/capability_contract_coherence.js";
 import { checkCrossFileContractCoherence } from "../runtime/verification/cross_file_contract_coherence.js";
@@ -28,8 +30,10 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const EXEC_DIR = path.dirname(__filename);
 const AI_OS_ROOT = path.dirname(EXEC_DIR);
-const PROJECT_ROOT = path.dirname(AI_OS_ROOT);
+const resolvedProjectRoot = resolveProjectRoot(AI_OS_ROOT);
+const PROJECT_ROOT = resolvedProjectRoot.ok ? resolvedProjectRoot.projectRoot : path.dirname(AI_OS_ROOT);
 const PATHS = getRuntimePaths(AI_OS_ROOT);
+const require = createRequire(import.meta.url);
 
 const relativePath = process.argv[2];
 
@@ -79,6 +83,40 @@ function looksLikeJsx(content) {
     /<\s*[A-Za-z][\w.-]*(\s|>|\/)/m.test(content) ||
     /<\/\s*[A-Za-z][\w.-]*\s*>/m.test(content)
   );
+}
+
+function runJsxSyntaxCheck(content) {
+  let babelParser = null;
+
+  try {
+    babelParser = require("@babel/parser");
+  } catch (err) {
+    return {
+      ok: false,
+      detail: "JSX syntax check requires @babel/parser. Run: npm install",
+      missing_dependency: true,
+    };
+  }
+
+  try {
+    babelParser.parse(content, {
+      sourceType: "unambiguous",
+      allowAwaitOutsideFunction: true,
+      errorRecovery: false,
+      plugins: [
+        "jsx",
+        "importMeta",
+        "topLevelAwait",
+      ],
+    });
+
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      detail: err?.message || "JSX parse failed",
+    };
+  }
 }
 
 function runSyntaxCheck(content) {
@@ -317,15 +355,25 @@ logSuccess("No bad patterns");
 if (isJsLikeFile) {
   logSub("Running module-aware syntax check...");
 
-  const syntax = runSyntaxCheck(content);
   const jsxLike = looksLikeJsx(content);
+  const isJsxFile = extension === ".jsx";
+  const syntax = isJsxFile ? { ok: false, detail: "Node --check does not parse JSX" } : runSyntaxCheck(content);
 
   if (syntax.ok) {
     pass("syntax_valid");
     logSuccess("Syntax looks valid");
-  } else if (jsxLike) {
-    warn("syntax_valid", `Skipped hard failure for JSX-like content: ${syntax.detail}`);
-    logWarn("Node syntax check does not support JSX; recorded warning instead of failure");
+  } else if (jsxLike || isJsxFile) {
+    const jsxSyntax = runJsxSyntaxCheck(content);
+
+    if (jsxSyntax.ok) {
+      pass("syntax_valid");
+      logSuccess("JSX syntax looks valid");
+    } else {
+      fail("syntax_valid", jsxSyntax.detail || syntax.detail || "JSX syntax check failed");
+      writeJson(PATHS.verifyResultJson, result);
+      logError("JSX syntax check failed");
+      process.exit(1);
+    }
   } else {
     fail("syntax_valid", syntax.detail);
     writeJson(PATHS.verifyResultJson, result);

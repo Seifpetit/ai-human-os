@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "workspace_root": "",
+  "notes": [
+    "workspace_root is the target project directory that AI-Human OS will mutate (write code into).",
+    "If workspace_root is empty, the default is the directory that contains this AI-Human OS folder.",
+    "You can override this at runtime with the env var: AI_HUMAN_OS_WORKSPACE_ROOT"
+  ]
+}

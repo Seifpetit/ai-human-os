@@ -2,6 +2,15 @@
 
 Contract Layers Schema
 
+This is the public-facing copy of the CLS document.
+
+Canonical source:
+- `AI-Human OS/CLS.md`
+
+If these ever diverge, update both (or make `AI-Human OS/CLS.md` the single source and regenerate this file deterministically).
+
+---
+
 ## Purpose
 
 CLS defines the current enforced pipeline as contract boundaries.
@@ -166,7 +175,7 @@ The canonical (machine-readable) source of these definitions is `AI-Human OS/mem
 - Consumer: Gate 3 / acceptance path
 - Contract:
   - only `status: pass` for the current operation key makes the artifact eligible for acceptance
-  - syntax, semantic, capability, workflow, scaffold, cross-file, and product checks must pass or be explicitly warned/skipped by policy
+  - syntax checks must pass (JSX requires a JSX-capable parse, not a warn downgrade)
 
 ### L11. Gate 3: Verified Artifact Approval
 
@@ -262,7 +271,6 @@ The canonical (machine-readable) source of these definitions is `AI-Human OS/mem
 - Acceptance truth: `file_registry.json` + `applied_operations.json` + `execution_history.jsonl`
 - Telemetry truth: `cycle_metrics.jsonl` + `run_metrics.json`
 - Throughput policy truth: `THROUGHPUT_POLICY.json`
-- Workspace-scoped state truth: `AI-Human OS/data/workspaces/<workspace_id>/...` (selected by `WORKSPACE_CONFIG.json` or `AI_HUMAN_OS_WORKSPACE_ROOT`)
 
 ## Compressed Flow
 
@@ -278,3 +286,4 @@ Human intent
 -> Gate 3 approved verified artifact
 -> registry update and applied-state commit
 -> metrics
+

@@ -23,6 +23,7 @@ Human intent -> planning intake -> approval -> staged planning
 ```
 
 The canonical flow description lives in [AI-Human OS/HFD.md](AI-Human%20OS/HFD.md).
+The canonical contract spec lives in [AI-Human OS/.docs/CLS.md](AI-Human%20OS/.docs/CLS.md).
 
 ## Repository Layout
 
@@ -122,10 +123,12 @@ python "AI-Human OS/8_metrics/render_metrics_report.py"
 
 The reporter treats these files as the canonical metric inputs:
 
-- `AI-Human OS/data/cycle_metrics.jsonl`
-- `AI-Human OS/data/run_metrics.json`
+- `AI-Human OS/data/workspaces/<workspace_id>/cycle_metrics.jsonl`
+- `AI-Human OS/data/workspaces/<workspace_id>/run_metrics.json`
 
 `node run_ai.js` now initializes those artifacts at run start, so metrics exist even for zero-cycle or preflight-failed runs.
+
+Note: metrics and runtime state are workspace-scoped under `AI-Human OS/data/workspaces/<workspace_id>/...` when using the Phase 2 workspace root selector.
 
 ## Throughput Policy
 
@@ -140,8 +143,60 @@ The gates still exist. Auto-approval only changes who satisfies the gate: human 
 ## Notes
 
 - The repo currently has no formal test script in `package.json`.
-- Pipeline state and metrics are persisted under `AI-Human OS/data/`.
-- Planning compiler evaluations include decision and cross-stage traceability artifacts under `AI-Human OS/data/`.
-- Selective behavior-simulation state is persisted under `AI-Human OS/data/behavior_state.json`.
+- Pipeline state and metrics are persisted under `AI-Human OS/data/workspaces/<workspace_id>/...`.
+- Planning compiler evaluations include decision and cross-stage traceability artifacts under `AI-Human OS/data/workspaces/<workspace_id>/`.
+- Selective behavior-simulation state is persisted under `AI-Human OS/data/workspaces/<workspace_id>/behavior_state.json`.
 - Human-readable metrics output is generated under `AI-Human OS/data/metrics_report/`.
 - The generated diagrams are stored in `AI-Human OS/.docs/`.
+
+## Human Console
+
+This repo includes a minimal local “Human Console” UI for the AI-Human OS pipeline (gate approvals, artifact viewing, and live logs).
+
+Start the local console API:
+
+```bash
+npm run console:api
+```
+
+Start the console UI (separate Vite app):
+
+```bash
+npm run console:ui
+```
+
+Then open `http://127.0.0.1:5174`.
+
+Safety model:
+- The console can only edit `Approval Status` for Gate 1/2/3 docs.
+- The console can only run an allowlisted set of pipeline entrypoints.
+
+What the console now includes:
+- left-side CLS stepper with a clear "YOU ARE HERE" state
+- artifact viewer for the current gate and the live planning/execution artifacts
+- workspace-root selector for targeting a different project directory
+- live log stream for allowlisted pipeline commands
+- artifact search and pinned artifacts for fast review
+- artifact diff view backed by workspace-scoped snapshot history
+- cycle timeline with jump-to-artifact shortcuts
+- blocked-state summaries derived from canonical run and verifier artifacts
+
+## Human Console Workspace Root
+
+The console can target a different project directory (where code is generated/modified) via:
+
+- UI field: "Set Workspace" in the Human Console
+- config file: `AI-Human OS/memory/WORKSPACE_CONFIG.json`
+- env override: `AI_HUMAN_OS_WORKSPACE_ROOT` (takes precedence over config)
+
+The pipeline will still read/write its own AI-Human OS artifacts in this repo, but file generation, verification, registry reads, and commit checks resolve target files under the selected workspace root.
+
+Runtime state for each workspace is isolated under:
+
+- `AI-Human OS/data/workspaces/<workspace_id>/implementation_plan.json`
+- `AI-Human OS/data/workspaces/<workspace_id>/target_file_request.json`
+- `AI-Human OS/data/workspaces/<workspace_id>/execution_result.json`
+- `AI-Human OS/data/workspaces/<workspace_id>/verify_result.json`
+- `AI-Human OS/data/workspaces/<workspace_id>/cycle_metrics.jsonl`
+- `AI-Human OS/data/workspaces/<workspace_id>/run_metrics.json`
+- `AI-Human OS/data/workspaces/<workspace_id>/console_artifact_snapshots.json`

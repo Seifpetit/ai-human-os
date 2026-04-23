@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
+import { fileURLToPath } from "url";
 
 import { getImplementationPlan, getNextCycle } from "./4.parse_plan.js";
 import { enrichRequest } from "./5.enrich_request.js";
@@ -22,7 +23,9 @@ import {
   logWarn
 } from "./run_logger.js";
 
-const AI_OS_ROOT = path.join(process.cwd(), "AI-Human OS");
+const __filename = fileURLToPath(import.meta.url);
+const EXEC_DIR = path.dirname(__filename);
+const AI_OS_ROOT = path.dirname(EXEC_DIR);
 const PATHS = getRuntimePaths(AI_OS_ROOT);
 
 function getRegistryEntry(registry, filePath) {

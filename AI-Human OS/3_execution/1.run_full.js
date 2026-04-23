@@ -1,6 +1,7 @@
 import fs from "fs";
 import { execSync } from "child_process";
 import path from "path";
+import { fileURLToPath } from "url";
 
 import {
   appendJsonl,
@@ -29,7 +30,9 @@ import {
   logWarn,
 } from "./run_logger.js";
 
-const AI_OS_ROOT = path.join(process.cwd(), "AI-Human OS");
+const __filename = fileURLToPath(import.meta.url);
+const EXEC_DIR = path.dirname(__filename);
+const AI_OS_ROOT = path.dirname(EXEC_DIR);
 const PATHS = getRuntimePaths(AI_OS_ROOT);
 const RUN_ID = `run_${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}`;
 const RUN_STARTED_AT = new Date().toISOString();

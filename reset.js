@@ -1,11 +1,15 @@
 import fs from "fs";
 import path from "path";
 import readline from "readline";
-import { parseImplementationPlanMarkdown, syncImplementationPlanJson } from "./AI-Human OS/runtime/planning/data_layer.js";
+import { parseImplementationPlanMarkdown, syncImplementationPlanJson, getRuntimePaths } from "./AI-Human OS/runtime/planning/data_layer.js";
+import { resolveProjectRoot } from "./AI-Human OS/runtime/workspace/workspace_config.js";
 
 const ROOT = process.cwd();
 const AI_OS_ROOT = path.join(ROOT, "AI-Human OS");
-const DATA_DIR = path.join(AI_OS_ROOT, "data");
+const RESOLVED_WORKSPACE = resolveProjectRoot(AI_OS_ROOT);
+const WORKSPACE_ROOT = RESOLVED_WORKSPACE.ok ? RESOLVED_WORKSPACE.projectRoot : ROOT;
+const RUNTIME_PATHS = getRuntimePaths(AI_OS_ROOT);
+const DATA_DIR = RUNTIME_PATHS.dataDir;
 const FEATURE_ARCHIVE_DIR = path.join(AI_OS_ROOT, "feature_archive");
 
 const PATHS = {
@@ -18,9 +22,11 @@ const PATHS = {
   uiPatternsTemplate: path.join(AI_OS_ROOT, "memory/UI_PATTERNS.template.md"),
   designTokens: path.join(AI_OS_ROOT, "memory/DESIGN_TOKENS.json"),
   designTokensTemplate: path.join(AI_OS_ROOT, "memory/DESIGN_TOKENS.template.json"),
+  intentConfirmation: path.join(AI_OS_ROOT, "1_planning/INTENT_CONFIRMATION.md"),
   featuresList: path.join(AI_OS_ROOT, "1_planning/FEATURES_LIST.md"),
   featureRequest: path.join(AI_OS_ROOT, "1_planning/FEATURE_REQUEST.md"),
   featureRequestTemplate: path.join(AI_OS_ROOT, "1_planning/FEATURE_REQUEST.template.md"),
+  executionConfirmation: path.join(AI_OS_ROOT, "1_planning/EXECUTION_CONFIRMATION.md"),
   implementationPlan: path.join(AI_OS_ROOT, "1_planning/IMPLEMENTATION_PLAN.md"),
   implementationPlanTemplate: path.join(AI_OS_ROOT, "1_planning/IMPLEMENTATION_PLAN.template.md"),
   scenarios: path.join(AI_OS_ROOT, "2_behavior/SCENARIOS.md"),
@@ -31,15 +37,19 @@ const PATHS = {
   reconciliationRuleTemplate: path.join(AI_OS_ROOT, "2_behavior/RECONCILIATION_RULE.template.md"),
   simulationReport: path.join(AI_OS_ROOT, "2_behavior/SIMULATION_REPORT.md"),
   simulationReportTemplate: path.join(AI_OS_ROOT, "2_behavior/SIMULATION_REPORT.template.md"),
+  commitConfirmation: path.join(AI_OS_ROOT, "5_commit/COMMIT_CONFIRMATION.md"),
   appliedState: path.join(AI_OS_ROOT, "5_commit/APPLIED_STATE.md"),
-  implementationPlanJson: path.join(DATA_DIR, "implementation_plan.json"),
-  fileRegistryJson: path.join(DATA_DIR, "file_registry.json"),
-  targetRequestJson: path.join(DATA_DIR, "target_file_request.json"),
+  implementationPlanJson: RUNTIME_PATHS.implementationPlanJson,
+  fileRegistryJson: RUNTIME_PATHS.fileRegistryJson,
+  targetRequestJson: RUNTIME_PATHS.targetRequestJson,
   targetRequestMd: path.join(AI_OS_ROOT, "3_execution/TARGET_FILE_REQUEST.md"),
-  verifyResultJson: path.join(DATA_DIR, "verify_result.json"),
-  executionResultJson: path.join(DATA_DIR, "execution_result.json"),
-  appliedOperationsJson: path.join(DATA_DIR, "applied_operations.json"),
-  executionHistoryJsonl: path.join(DATA_DIR, "execution_history.jsonl"),
+  verifyResultJson: RUNTIME_PATHS.verifyResultJson,
+  executionResultJson: RUNTIME_PATHS.executionResultJson,
+  appliedOperationsJson: RUNTIME_PATHS.appliedOperationsJson,
+  executionHistoryJsonl: RUNTIME_PATHS.executionHistoryJsonl,
+  cycleMetricsJsonl: RUNTIME_PATHS.cycleMetricsJsonl,
+  runMetricsJson: RUNTIME_PATHS.runMetricsJson,
+  consoleSnapshotsJson: RUNTIME_PATHS.consoleSnapshotsJson,
 };
 
 const PROJECT_CONTEXT_TEMPLATE = `# Project Context
@@ -404,7 +414,7 @@ function collectPreservedPathsFromPlan(planData) {
 }
 
 function isInsideRoot(targetPath) {
-  const relative = path.relative(ROOT, targetPath);
+  const relative = path.relative(WORKSPACE_ROOT, targetPath);
   return relative && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
@@ -419,7 +429,7 @@ function deleteGeneratedFiles(extraOperations = [], options = {}) {
     if (!op?.file_path || seen.has(op.file_path)) continue;
     seen.add(op.file_path);
 
-    const absolutePath = path.join(ROOT, op.file_path);
+    const absolutePath = path.join(WORKSPACE_ROOT, op.file_path);
     if (!isInsideRoot(absolutePath)) {
       skipped.push(`${op.file_path} (outside workspace root)`);
       continue;
@@ -484,11 +494,17 @@ function resetRuntimeState() {
   writeText(PATHS.appliedState, APPLIED_STATE_TEMPLATE);
   writeText(PATHS.fileRegistryMd, FILE_REGISTRY_TEMPLATE);
 
+  removeIfExists(PATHS.intentConfirmation);
+  removeIfExists(PATHS.executionConfirmation);
+  removeIfExists(PATHS.commitConfirmation);
   removeIfExists(PATHS.implementationPlanJson);
   removeIfExists(PATHS.targetRequestJson);
   removeIfExists(PATHS.targetRequestMd);
   removeIfExists(PATHS.verifyResultJson);
   removeIfExists(PATHS.executionResultJson);
+  removeIfExists(PATHS.cycleMetricsJsonl);
+  removeIfExists(PATHS.runMetricsJson);
+  removeIfExists(PATHS.consoleSnapshotsJson);
 }
 
 function resetNormal() {
@@ -583,12 +599,62 @@ function printSummary(kind, result) {
   }
 
   console.log("Runtime state reset:");
-  console.log("- AI-Human OS/data/file_registry.json");
-  console.log("- AI-Human OS/data/applied_operations.json");
-  console.log("- AI-Human OS/data/execution_history.jsonl");
+  console.log(`- ${path.relative(ROOT, PATHS.fileRegistryJson).replace(/\\/g, "/")}`);
+  console.log(`- ${path.relative(ROOT, PATHS.appliedOperationsJson).replace(/\\/g, "/")}`);
+  console.log(`- ${path.relative(ROOT, PATHS.executionHistoryJsonl).replace(/\\/g, "/")}`);
   console.log("- AI-Human OS/5_commit/APPLIED_STATE.md");
   console.log("- AI-Human OS/memory/FILE_REGISTRY.md");
+  console.log("- AI-Human OS/1_planning/INTENT_CONFIRMATION.md (removed)");
+  console.log("- AI-Human OS/1_planning/EXECUTION_CONFIRMATION.md (removed)");
+  console.log("- AI-Human OS/5_commit/COMMIT_CONFIRMATION.md (removed)");
   console.log("");
+}
+
+function getArgValue(flag) {
+  const index = process.argv.indexOf(flag);
+  if (index === -1) return "";
+  return process.argv[index + 1] || "";
+}
+
+function hasArg(flag) {
+  return process.argv.includes(flag);
+}
+
+function printArchivesJson() {
+  const archives = listArchivedFeatures().map(item => ({
+    dir_name: item.dir_name,
+    feature_number: item.feature_number,
+    feature_title: item.feature_title,
+    archived_at: item.archived_at,
+  }));
+  console.log(JSON.stringify({ ok: true, archives }, null, 2));
+}
+
+function runMode(mode, archiveDirName = "") {
+  if (mode === "normal") {
+    const result = resetNormal();
+    printSummary("Normal reset", result);
+    return;
+  }
+
+  if (mode === "archive") {
+    const archives = listArchivedFeatures();
+    const archive = archives.find(item => item.dir_name === archiveDirName) || null;
+    if (!archive) {
+      throw new Error("Archive mode requires a valid --archive <dir_name> selection.");
+    }
+    const result = restoreArchivedFeature(archive);
+    printSummary("Archive restore reset", result);
+    return;
+  }
+
+  if (mode === "hard") {
+    const result = resetHard();
+    printSummary("Hard reset", result);
+    return;
+  }
+
+  throw new Error(`Unknown mode '${mode}'. Expected normal, archive, or hard.`);
 }
 
 async function promptChoice() {
@@ -652,6 +718,17 @@ async function promptChoice() {
 }
 
 async function main() {
+  if (hasArg("--list-archives-json")) {
+    printArchivesJson();
+    return;
+  }
+
+  const mode = getArgValue("--mode");
+  if (mode) {
+    runMode(mode, getArgValue("--archive"));
+    return;
+  }
+
   const { answer, archive } = await promptChoice();
 
   if (answer === "1") {

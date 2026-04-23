@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "definitions": {
+    "contract": {
+      "name": "Contract",
+      "short": "A contract is an artifact plus the invariants its consumer is allowed to assume.",
+      "must_include": [
+        "producer (who writes the artifact)",
+        "consumer (who reads the artifact)",
+        "artifact identity (path, key, hash, or schema)",
+        "invariants (what must be true for the consumer to proceed)",
+        "failure mode (block, retry, or fail) when invariants are not satisfied"
+      ],
+      "notes": [
+        "Contracts are enforced by deterministic code whenever possible.",
+        "When a human gate exists, approval becomes part of the contract state."
+      ]
+    },
+    "contract_layer": {
+      "name": "Contract Layer",
+      "short": "A contract layer is a phase boundary where one contract is produced and validated before the system can move forward.",
+      "properties": [
+        "has a primary artifact boundary (what is handed off)",
+        "has a deterministic validator (preferred) or a human gate",
+        "is allowed to block downstream work until its contract is satisfied",
+        "owns the meaning of its artifact (its schema and semantics)"
+      ]
+    },
+    "cycle": {
+      "name": "Cycle",
+      "short": "A cycle is one planned operation_key applied to one target file across zero or more retries.",
+      "identity": [
+        "run_id (the run that attempted it)",
+        "operation_key (the plan operation being applied)",
+        "file_path (the target file for the operation)"
+      ],
+      "starts_when": [
+        "the operator selects the next runnable operation_key from implementation_plan.json"
+      ],
+      "retries": [
+        "all retries remain inside the same cycle and the same operation_key",
+        "retry feedback modifies the next attempt but does not create a new cycle"
+      ],
+      "ends_when": [
+        "the operation is committed into applied state (success)",
+        "the operation is terminally blocked (missing capability, plan blocked, behavior gate blocked, max retries reached, etc.)"
+      ],
+      "gate_interaction": [
+        "Gate 3 (commit approval) can pause a cycle after verification; that cycle is not complete until the artifact is approved (or auto-approved) and committed."
+      ]
+    },
+    "run": {
+      "name": "Run",
+      "short": "A run is one invocation of node run_ai.js that attempts to apply zero or more cycles against the current compiled plan and state.",
+      "identity": [
+        "run_id (unique identifier written into run_metrics.json)",
+        "lifecycle.started_at / finished_at timestamps"
+      ],
+      "artifacts": [
+        "AI-Human OS/data/workspaces/<workspace_id>/run_metrics.json summarizes the run",
+        "AI-Human OS/data/workspaces/<workspace_id>/cycle_metrics.jsonl appends one record per completed cycle"
+      ],
+      "notes": [
+        "A run may have zero cycles (preflight/gate failures).",
+        "A run may stop early with a pending human gate (Gate 2 or Gate 3)."
+      ]
+    },
+    "complete_run": {
+      "name": "Complete Run",
+      "short": "A complete run is a run that finishes with lifecycle.status=completed and no remaining runnable operations for the compiled plan.",
+      "canonical_truth": [
+        "AI-Human OS/data/workspaces/<workspace_id>/run_metrics.json.lifecycle.status == completed",
+        "AI-Human OS/data/workspaces/<workspace_id>/run_metrics.json.failure.classification == none",
+        "the operator reached IMPLEMENTATION COMPLETE (no remaining operations) during the run"
+      ],
+      "not_complete_when": [
+        "Gate 2 is not approved (execution never started)",
+        "Gate 3 is pending for a verified artifact (commit is blocked)",
+        "behavior gate is blocked",
+        "preflight failed",
+        "max cycles or retry policy exhaustion stopped the run"
+      ]
+    }
+  }
+}

@@ -11,6 +11,7 @@ import {
   syncFileRegistryJson,
   writeJson,
 } from "../runtime/planning/data_layer.js";
+import { resolveProjectRoot } from "../runtime/workspace/workspace_config.js";
 import { runModel, getModelConfig } from "../runtime/model/model_adapter.js";
 import {
   logStep,
@@ -26,7 +27,8 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const EXEC_DIR = path.dirname(__filename);
 const AI_OS_ROOT = path.dirname(EXEC_DIR);
-const PROJECT_ROOT = path.dirname(AI_OS_ROOT);
+const resolvedProjectRoot = resolveProjectRoot(AI_OS_ROOT);
+const PROJECT_ROOT = resolvedProjectRoot.ok ? resolvedProjectRoot.projectRoot : path.dirname(AI_OS_ROOT);
 const PATHS = getRuntimePaths(AI_OS_ROOT);
 
 function safeRead(p) {

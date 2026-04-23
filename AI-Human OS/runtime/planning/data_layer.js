@@ -1,28 +1,54 @@
 import fs from "fs";
 import path from "path";
+import { createHash } from "crypto";
 import { assertPlanCompleteness } from "./plan_completeness.js";
 import { assertPlanDecisions, evaluatePlanDecisions } from "./decision_evaluator.js";
 import { assertPlanTraceability, evaluatePlanTraceability } from "./plan_traceability.js";
+import { resolveProjectRoot } from "../workspace/workspace_config.js";
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
+function sha256(value) {
+  return createHash("sha256").update(String(value || ""), "utf-8").digest("hex");
+}
+
+function workspaceIdFromRoot(workspaceRoot) {
+  const normalized = path.resolve(String(workspaceRoot || "")).replace(/\\/g, "/").toLowerCase();
+  return `ws_${sha256(normalized).slice(0, 12)}`;
+}
+
 export function getRuntimePaths(aiOsRoot) {
-  const dataDir = path.join(aiOsRoot, "data");
-  ensureDir(dataDir);
+  const dataRootDir = path.join(aiOsRoot, "data");
+  ensureDir(dataRootDir);
+
+  const resolved = resolveProjectRoot(aiOsRoot);
+  const workspaceRoot = resolved.ok ? resolved.projectRoot : path.dirname(aiOsRoot);
+  const workspaceId = workspaceIdFromRoot(workspaceRoot);
+  const workspaceDataDir = path.join(dataRootDir, "workspaces", workspaceId);
+  ensureDir(workspaceDataDir);
 
   return {
     aiOsRoot,
-    dataDir,
+    dataRootDir,
+    dataDir: workspaceDataDir,
+    workspace: {
+      id: workspaceId,
+      root: workspaceRoot,
+      source: resolved.ok ? resolved.source : "default",
+      configPath: resolved.ok ? resolved.configPath : path.join(aiOsRoot, "memory", "WORKSPACE_CONFIG.json"),
+      ok: resolved.ok,
+      error: resolved.ok ? "none" : resolved.error || "workspace_root_not_a_directory",
+    },
     implementationPlanMd: path.join(aiOsRoot, "1_planning/IMPLEMENTATION_PLAN.md"),
-    implementationPlanJson: path.join(dataDir, "implementation_plan.json"),
-    planDecisionEvaluationJson: path.join(dataDir, "plan_decision_evaluation.json"),
-    planTraceabilityEvaluationJson: path.join(dataDir, "plan_traceability_evaluation.json"),
-    planFeedbackJson: path.join(dataDir, "plan_feedback.json"),
-    planReconciliationJson: path.join(dataDir, "plan_reconciliation.json"),
-    featuresListFeedbackJson: path.join(dataDir, "features_list_feedback.json"),
-    featureRequestFeedbackJson: path.join(dataDir, "feature_request_feedback.json"),
+    implementationPlanJson: path.join(workspaceDataDir, "implementation_plan.json"),
+    planDecisionEvaluationJson: path.join(workspaceDataDir, "plan_decision_evaluation.json"),
+    planTraceabilityEvaluationJson: path.join(workspaceDataDir, "plan_traceability_evaluation.json"),
+    planFeedbackJson: path.join(workspaceDataDir, "plan_feedback.json"),
+    planReconciliationJson: path.join(workspaceDataDir, "plan_reconciliation.json"),
+    featuresListFeedbackJson: path.join(workspaceDataDir, "features_list_feedback.json"),
+    featureRequestFeedbackJson: path.join(workspaceDataDir, "feature_request_feedback.json"),
     featureRequestMd: path.join(aiOsRoot, "1_planning/FEATURE_REQUEST.md"),
     featuresListMd: path.join(aiOsRoot, "1_planning/FEATURES_LIST.md"),
     executionConfirmationMd: path.join(aiOsRoot, "1_planning/EXECUTION_CONFIRMATION.md"),
@@ -44,16 +70,19 @@ export function getRuntimePaths(aiOsRoot) {
     driftScoringJson: path.join(aiOsRoot, "memory/DRIFT_SCORING.json"),
     metaSystemStatesJson: path.join(aiOsRoot, "memory/META_SYSTEM_STATES.json"),
     throughputPolicyJson: path.join(aiOsRoot, "memory/THROUGHPUT_POLICY.json"),
-    fileRegistryJson: path.join(dataDir, "file_registry.json"),
+    canonicalDefinitionsJson: path.join(aiOsRoot, "memory/CANONICAL_DEFINITIONS.json"),
+    workspaceConfigJson: path.join(aiOsRoot, "memory/WORKSPACE_CONFIG.json"),
+    fileRegistryJson: path.join(workspaceDataDir, "file_registry.json"),
     targetRequestMd: path.join(aiOsRoot, "3_execution/TARGET_FILE_REQUEST.md"),
-    targetRequestJson: path.join(dataDir, "target_file_request.json"),
-    executionResultJson: path.join(dataDir, "execution_result.json"),
-    verifyResultJson: path.join(dataDir, "verify_result.json"),
-    cycleMetricsJsonl: path.join(dataDir, "cycle_metrics.jsonl"),
-    runMetricsJson: path.join(dataDir, "run_metrics.json"),
-    behaviorStateJson: path.join(dataDir, "behavior_state.json"),
-    appliedOperationsJson: path.join(dataDir, "applied_operations.json"),
-    executionHistoryJsonl: path.join(dataDir, "execution_history.jsonl"),
+    targetRequestJson: path.join(workspaceDataDir, "target_file_request.json"),
+    executionResultJson: path.join(workspaceDataDir, "execution_result.json"),
+    verifyResultJson: path.join(workspaceDataDir, "verify_result.json"),
+    cycleMetricsJsonl: path.join(workspaceDataDir, "cycle_metrics.jsonl"),
+    runMetricsJson: path.join(workspaceDataDir, "run_metrics.json"),
+    consoleSnapshotsJson: path.join(workspaceDataDir, "console_artifact_snapshots.json"),
+    behaviorStateJson: path.join(workspaceDataDir, "behavior_state.json"),
+    appliedOperationsJson: path.join(workspaceDataDir, "applied_operations.json"),
+    executionHistoryJsonl: path.join(workspaceDataDir, "execution_history.jsonl"),
     commitConfirmationMd: path.join(aiOsRoot, "5_commit/COMMIT_CONFIRMATION.md"),
     appliedStateMd: path.join(aiOsRoot, "5_commit/APPLIED_STATE.md"),
   };
@@ -418,9 +447,11 @@ export function syncImplementationPlanJson(aiOsRoot) {
   const parsed = parseImplementationPlanMarkdown(markdown);
   const featuresList = safeRead(paths.featuresListMd);
   const featureRequest = safeRead(paths.featureRequestMd);
+  const resolvedProjectRoot = resolveProjectRoot(aiOsRoot);
+  const projectRoot = resolvedProjectRoot.ok ? resolvedProjectRoot.projectRoot : path.dirname(aiOsRoot);
   const decisionEvaluation = evaluatePlanDecisions(parsed, {
     aiOsRoot,
-    projectRoot: path.dirname(aiOsRoot),
+    projectRoot,
   });
   const traceabilityEvaluation = evaluatePlanTraceability({
     featuresListMarkdown: featuresList,
@@ -431,7 +462,7 @@ export function syncImplementationPlanJson(aiOsRoot) {
   writeJson(paths.planTraceabilityEvaluationJson, traceabilityEvaluation);
   assertPlanDecisions(parsed, {
     aiOsRoot,
-    projectRoot: path.dirname(aiOsRoot),
+    projectRoot,
   });
   assertPlanTraceability({
     featuresListMarkdown: featuresList,
@@ -439,7 +470,7 @@ export function syncImplementationPlanJson(aiOsRoot) {
     planData: parsed,
   });
   assertPlanCompleteness(featureRequest, parsed, {
-    projectRoot: path.dirname(aiOsRoot),
+    projectRoot,
   });
   writeJson(paths.implementationPlanJson, parsed);
   return parsed;

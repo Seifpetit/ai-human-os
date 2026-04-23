@@ -3,11 +3,13 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import { getRuntimePaths, readJson, readJsonl, readTargetRequest, writeJson } from "../runtime/planning/data_layer.js";
+import { resolveProjectRoot } from "../runtime/workspace/workspace_config.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const UPGRADE_DIR = path.dirname(__filename);
 const AI_OS_ROOT = path.dirname(UPGRADE_DIR);
-const PROJECT_ROOT = path.dirname(AI_OS_ROOT);
+const resolvedProjectRoot = resolveProjectRoot(AI_OS_ROOT);
+const PROJECT_ROOT = resolvedProjectRoot.ok ? resolvedProjectRoot.projectRoot : path.dirname(AI_OS_ROOT);
 const PATHS = getRuntimePaths(AI_OS_ROOT);
 
 const REPORT_JSON_PATH = path.join(PATHS.dataDir, "schema_gap_report.json");

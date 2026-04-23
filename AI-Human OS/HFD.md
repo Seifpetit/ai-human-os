@@ -81,8 +81,8 @@ HFD = Whole Flow Diagram
 
 ## Metrics Flow
 
-39. Deterministic code writes one record per finished cycle to `AI-Human OS/data/cycle_metrics.jsonl`
-40. Deterministic code writes one run summary to `AI-Human OS/data/run_metrics.json`
+39. Deterministic code writes one record per finished cycle to `AI-Human OS/data/workspaces/<workspace_id>/cycle_metrics.jsonl`
+40. Deterministic code writes one run summary to `AI-Human OS/data/workspaces/<workspace_id>/run_metrics.json`
 
 ## Compressed Form
 
