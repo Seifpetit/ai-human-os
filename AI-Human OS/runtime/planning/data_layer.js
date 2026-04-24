@@ -4,7 +4,7 @@ import { createHash } from "crypto";
 import { assertPlanCompleteness } from "./plan_completeness.js";
 import { assertPlanDecisions, evaluatePlanDecisions } from "./decision_evaluator.js";
 import { assertPlanTraceability, evaluatePlanTraceability } from "./plan_traceability.js";
-import { resolveProjectRoot } from "../workspace/workspace_config.js";
+import { assertWorkspaceRootReady, resolveProjectRoot } from "../workspace/workspace_config.js";
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -15,19 +15,20 @@ function sha256(value) {
 }
 
 function workspaceIdFromRoot(workspaceRoot) {
+  if (!workspaceRoot) {
+    return "unselected";
+  }
   const normalized = path.resolve(String(workspaceRoot || "")).replace(/\\/g, "/").toLowerCase();
   return `ws_${sha256(normalized).slice(0, 12)}`;
 }
 
 export function getRuntimePaths(aiOsRoot) {
   const dataRootDir = path.join(aiOsRoot, "data");
-  ensureDir(dataRootDir);
 
   const resolved = resolveProjectRoot(aiOsRoot);
-  const workspaceRoot = resolved.ok ? resolved.projectRoot : path.dirname(aiOsRoot);
+  const workspaceRoot = resolved.ok ? resolved.projectRoot : "";
   const workspaceId = workspaceIdFromRoot(workspaceRoot);
   const workspaceDataDir = path.join(dataRootDir, "workspaces", workspaceId);
-  ensureDir(workspaceDataDir);
 
   return {
     aiOsRoot,
@@ -447,8 +448,7 @@ export function syncImplementationPlanJson(aiOsRoot) {
   const parsed = parseImplementationPlanMarkdown(markdown);
   const featuresList = safeRead(paths.featuresListMd);
   const featureRequest = safeRead(paths.featureRequestMd);
-  const resolvedProjectRoot = resolveProjectRoot(aiOsRoot);
-  const projectRoot = resolvedProjectRoot.ok ? resolvedProjectRoot.projectRoot : path.dirname(aiOsRoot);
+  const projectRoot = assertWorkspaceRootReady(aiOsRoot).projectRoot;
   const decisionEvaluation = evaluatePlanDecisions(parsed, {
     aiOsRoot,
     projectRoot,

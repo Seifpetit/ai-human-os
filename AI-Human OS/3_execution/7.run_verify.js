@@ -11,7 +11,7 @@ import {
   readTargetRequest,
   writeJson,
 } from "../runtime/planning/data_layer.js";
-import { resolveProjectRoot } from "../runtime/workspace/workspace_config.js";
+import { assertWorkspaceRootReady } from "../runtime/workspace/workspace_config.js";
 import { checkBrowserScaffoldCoherence } from "../runtime/verification/browser_scaffold_coherence.js";
 import { checkCapabilityContractCoherence } from "../runtime/verification/capability_contract_coherence.js";
 import { checkCrossFileContractCoherence } from "../runtime/verification/cross_file_contract_coherence.js";
@@ -30,8 +30,7 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const EXEC_DIR = path.dirname(__filename);
 const AI_OS_ROOT = path.dirname(EXEC_DIR);
-const resolvedProjectRoot = resolveProjectRoot(AI_OS_ROOT);
-const PROJECT_ROOT = resolvedProjectRoot.ok ? resolvedProjectRoot.projectRoot : path.dirname(AI_OS_ROOT);
+const PROJECT_ROOT = assertWorkspaceRootReady(AI_OS_ROOT).projectRoot;
 const PATHS = getRuntimePaths(AI_OS_ROOT);
 const require = createRequire(import.meta.url);
 

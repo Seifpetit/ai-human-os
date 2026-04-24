@@ -38,6 +38,10 @@ export function loadProductRequirements(paths) {
       interaction_priority: extractSingleValue(productStandards, "Interaction priority"),
       accessibility_baseline: extractSingleValue(productStandards, "Accessibility baseline"),
       preferred_tone: extractSingleValue(productStandards, "Preferred product tone"),
+      visual_direction: extractSingleValue(productStandards, "Visual direction"),
+      color_direction: extractSingleValue(productStandards, "Color direction"),
+      ui_density: extractSingleValue(productStandards, "UI density"),
+      interaction_notes: extractSingleValue(productStandards, "Interaction notes"),
       avoid: extractList(productStandards, "Things the UI should avoid"),
       styling_contract: {
         mode: extractSingleValue(productStandards, "Styling contract mode") || "class_hook_surfaces",

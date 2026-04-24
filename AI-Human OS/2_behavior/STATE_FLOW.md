@@ -3,17 +3,22 @@
 ## Request Lifecycle
 states:
 - idle
-- input_received
+- loading
+- success
+- error
 
 transitions:
-- idle → input_received (user clicks a lobby button)
-- input_received → idle (input processed with no state mutation)
+- idle → loading (request sent)
+- loading → success (response received)
+- loading → error (request failed)
 
 ## Sync Lifecycle
 states:
-- static
-- interaction_detected
+- synced
+- dirty
+- syncing
 
 transitions:
-- static → interaction_detected (user interacts with lobby UI)
-- interaction_detected → static (no update/state change occurs)
+- synced → dirty (local change)
+- dirty → syncing (send update)
+- syncing → synced (server confirms)

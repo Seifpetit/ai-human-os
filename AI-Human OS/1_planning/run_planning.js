@@ -7,6 +7,7 @@ import { getRuntimePaths, readJson, safeRead, syncImplementationPlanJson } from 
 import { renderExecutionConfirmationMarkdown } from "../runtime/planning/execution_confirmation.js";
 import { reconcileImplementationPlanMarkdown, renderPlanReconciliationMarkdown } from "../runtime/planning/plan_reconciler.js";
 import { evaluateExecutionGatePolicy } from "../runtime/throughput/throughput_policy.js";
+import { assertWorkspaceRootReady } from "../runtime/workspace/workspace_config.js";
 import {
   assessRetryProgress,
   getPlanningRetryPolicy,
@@ -33,6 +34,7 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const PLANNING_DIR = path.dirname(__filename);
 const AI_OS_ROOT = path.dirname(PLANNING_DIR);
+assertWorkspaceRootReady(AI_OS_ROOT);
 const PATHS = getRuntimePaths(AI_OS_ROOT);
 const INTENT_CONFIRMATION_PATH = path.join(PLANNING_DIR, "INTENT_CONFIRMATION.md");
 

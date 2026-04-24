@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import readline from "readline";
-import { parseImplementationPlanMarkdown, syncImplementationPlanJson, getRuntimePaths } from "./AI-Human OS/runtime/planning/data_layer.js";
+import { parseImplementationPlanMarkdown, getRuntimePaths } from "./AI-Human OS/runtime/planning/data_layer.js";
 import { resolveProjectRoot } from "./AI-Human OS/runtime/workspace/workspace_config.js";
 
 const ROOT = process.cwd();
@@ -9,7 +9,7 @@ const AI_OS_ROOT = path.join(ROOT, "AI-Human OS");
 const RESOLVED_WORKSPACE = resolveProjectRoot(AI_OS_ROOT);
 const WORKSPACE_ROOT = RESOLVED_WORKSPACE.ok ? RESOLVED_WORKSPACE.projectRoot : ROOT;
 const RUNTIME_PATHS = getRuntimePaths(AI_OS_ROOT);
-const DATA_DIR = RUNTIME_PATHS.dataDir;
+const DATA_ROOT_DIR = RUNTIME_PATHS.dataRootDir;
 const FEATURE_ARCHIVE_DIR = path.join(AI_OS_ROOT, "feature_archive");
 
 const PATHS = {
@@ -29,6 +29,10 @@ const PATHS = {
   executionConfirmation: path.join(AI_OS_ROOT, "1_planning/EXECUTION_CONFIRMATION.md"),
   implementationPlan: path.join(AI_OS_ROOT, "1_planning/IMPLEMENTATION_PLAN.md"),
   implementationPlanTemplate: path.join(AI_OS_ROOT, "1_planning/IMPLEMENTATION_PLAN.template.md"),
+  planFeedbackMd: path.join(AI_OS_ROOT, "1_planning/PLAN_FEEDBACK.md"),
+  planReconciliationMd: path.join(AI_OS_ROOT, "1_planning/PLAN_RECONCILIATION.md"),
+  featuresListFeedbackMd: path.join(AI_OS_ROOT, "1_planning/FEATURES_LIST_FEEDBACK.md"),
+  featureRequestFeedbackMd: path.join(AI_OS_ROOT, "1_planning/FEATURE_REQUEST_FEEDBACK.md"),
   scenarios: path.join(AI_OS_ROOT, "2_behavior/SCENARIOS.md"),
   scenariosTemplate: path.join(AI_OS_ROOT, "2_behavior/SCENARIOS.template.md"),
   stateFlow: path.join(AI_OS_ROOT, "2_behavior/STATE_FLOW.md"),
@@ -40,6 +44,12 @@ const PATHS = {
   commitConfirmation: path.join(AI_OS_ROOT, "5_commit/COMMIT_CONFIRMATION.md"),
   appliedState: path.join(AI_OS_ROOT, "5_commit/APPLIED_STATE.md"),
   implementationPlanJson: RUNTIME_PATHS.implementationPlanJson,
+  planDecisionEvaluationJson: RUNTIME_PATHS.planDecisionEvaluationJson,
+  planTraceabilityEvaluationJson: RUNTIME_PATHS.planTraceabilityEvaluationJson,
+  planFeedbackJson: RUNTIME_PATHS.planFeedbackJson,
+  planReconciliationJson: RUNTIME_PATHS.planReconciliationJson,
+  featuresListFeedbackJson: RUNTIME_PATHS.featuresListFeedbackJson,
+  featureRequestFeedbackJson: RUNTIME_PATHS.featureRequestFeedbackJson,
   fileRegistryJson: RUNTIME_PATHS.fileRegistryJson,
   targetRequestJson: RUNTIME_PATHS.targetRequestJson,
   targetRequestMd: path.join(AI_OS_ROOT, "3_execution/TARGET_FILE_REQUEST.md"),
@@ -50,6 +60,9 @@ const PATHS = {
   cycleMetricsJsonl: RUNTIME_PATHS.cycleMetricsJsonl,
   runMetricsJson: RUNTIME_PATHS.runMetricsJson,
   consoleSnapshotsJson: RUNTIME_PATHS.consoleSnapshotsJson,
+  behaviorStateJson: RUNTIME_PATHS.behaviorStateJson,
+  schemaGapReportMd: path.join(AI_OS_ROOT, "7_schema_upgrade/SCHEMA_GAP_REPORT.md"),
+  schemaUpgradePlanMd: path.join(AI_OS_ROOT, "7_schema_upgrade/SCHEMA_UPGRADE_PLAN.md"),
 };
 
 const PROJECT_CONTEXT_TEMPLATE = `# Project Context
@@ -67,6 +80,20 @@ The system is designed to:
 The system is not the product itself. It is the operating layer used to generate product files.
 
 [ HUMAN PROJECT DESCRIPTION START ]
+What the product is:
+
+What players/users do:
+
+Core idea:
+
+How it works:
+
+Hard parts:
+
+Rules / constraints:
+
+One-line version:
+
 [ HUMAN PROJECT DESCRIPTION END ]
 
 ## Architecture Law
@@ -288,6 +315,12 @@ function removeIfExists(filePath) {
   }
 }
 
+function removeTreeIfExists(dirPath) {
+  if (fs.existsSync(dirPath)) {
+    fs.rmSync(dirPath, { force: true, recursive: true });
+  }
+}
+
 function parseCurrentFeatureName(markdown) {
   return markdown.match(/^## Name\r?\n(.+)$/m)?.[1]?.trim() || "";
 }
@@ -328,31 +361,98 @@ function getTrackedOperations() {
   return parseAppliedStateOperations(safeRead(PATHS.appliedState));
 }
 
+function extractLoosePlannedOperations(markdown) {
+  return [...String(markdown || "").matchAll(/### Cycle \d+([\s\S]*?)(?=### Cycle \d+|$)/g)]
+    .map(match => {
+      const block = match[1] || "";
+      const filePath = block.match(/- file:\s*(.+)/)?.[1]?.trim() || "";
+      const operationType = block.match(/- type:\s*(.+)/)?.[1]?.trim() || "";
+
+      if (!filePath || !operationType) {
+        return null;
+      }
+
+      return {
+        file_path: filePath,
+        operation_type: operationType,
+        operation_key: `${filePath}::${operationType}`,
+      };
+    })
+    .filter(Boolean);
+}
+
 function getPlannedNewFileOperations() {
-  if (!fs.existsSync(PATHS.implementationPlan)) {
+  const markdown = safeRead(PATHS.implementationPlan);
+  if (!markdown.trim()) {
     return [];
   }
 
-  const plan = syncImplementationPlanJson(AI_OS_ROOT);
-  return (plan.operations || [])
-    .filter(operation => operation.operation_type === "new_file" && operation.file_path)
-    .map(operation => ({
-      file_path: operation.file_path,
-      operation_type: operation.operation_type,
-      operation_key: operation.operation_key,
-    }));
+  try {
+    const plan = parseImplementationPlanMarkdown(markdown);
+    return (plan.operations || [])
+      .filter(operation => operation.operation_type === "new_file" && operation.file_path)
+      .map(operation => ({
+        file_path: operation.file_path,
+        operation_type: operation.operation_type,
+        operation_key: operation.operation_key,
+      }));
+  } catch {
+    return extractLoosePlannedOperations(markdown)
+      .filter(operation => operation.operation_type === "new_file");
+  }
 }
 
-function getManifestNewFileOperations(manifestPath) {
-  const manifest = fs.existsSync(manifestPath)
-    ? JSON.parse(fs.readFileSync(manifestPath, "utf-8"))
-    : null;
+function removeGeneratedArtifactDocs() {
+  [
+    PATHS.intentConfirmation,
+    PATHS.executionConfirmation,
+    PATHS.commitConfirmation,
+    PATHS.planFeedbackMd,
+    PATHS.planReconciliationMd,
+    PATHS.featuresListFeedbackMd,
+    PATHS.featureRequestFeedbackMd,
+    PATHS.targetRequestMd,
+    PATHS.schemaGapReportMd,
+    PATHS.schemaUpgradePlanMd,
+  ].forEach(removeIfExists);
+}
 
-  return (manifest?.new_file_paths || []).map(filePath => ({
-    file_path: filePath,
-    operation_type: "new_file",
-    operation_key: `${filePath}::new_file`,
-  }));
+function initializeRuntimeState() {
+  writeJson(PATHS.fileRegistryJson, EMPTY_FILE_REGISTRY_JSON);
+  writeJson(PATHS.appliedOperationsJson, EMPTY_APPLIED_OPERATIONS_JSON);
+  writeText(PATHS.executionHistoryJsonl, "");
+  writeText(PATHS.appliedState, APPLIED_STATE_TEMPLATE);
+  writeText(PATHS.fileRegistryMd, FILE_REGISTRY_TEMPLATE);
+}
+
+function clearGeneratedDataArtifacts() {
+  removeTreeIfExists(DATA_ROOT_DIR);
+
+  [
+    PATHS.implementationPlanJson,
+    PATHS.planDecisionEvaluationJson,
+    PATHS.planTraceabilityEvaluationJson,
+    PATHS.planFeedbackJson,
+    PATHS.planReconciliationJson,
+    PATHS.featuresListFeedbackJson,
+    PATHS.featureRequestFeedbackJson,
+    PATHS.fileRegistryJson,
+    PATHS.targetRequestJson,
+    PATHS.verifyResultJson,
+    PATHS.executionResultJson,
+    PATHS.appliedOperationsJson,
+    PATHS.executionHistoryJsonl,
+    PATHS.cycleMetricsJsonl,
+    PATHS.runMetricsJson,
+    PATHS.consoleSnapshotsJson,
+    PATHS.behaviorStateJson,
+  ].forEach(removeIfExists);
+}
+
+function resetRuntimeState() {
+  clearGeneratedDataArtifacts();
+  removeGeneratedArtifactDocs();
+  initializeRuntimeState();
 }
 
 function getCurrentPlanData() {
@@ -409,7 +509,7 @@ function collectPreservedPathsFromPlan(planData) {
   preserveIfReusable(workflowContracts.state_owner);
   preserveIfReusable(workflowContracts.success_surface);
   preserveIfReusable(workflowContracts.failure_surface);
-
+  
   return preserved;
 }
 
@@ -485,26 +585,16 @@ function listArchivedFeatures() {
     });
 }
 
-function resetRuntimeState() {
-  ensureDir(DATA_DIR);
+function getManifestNewFileOperations(manifestPath) {
+  const manifest = fs.existsSync(manifestPath)
+    ? JSON.parse(fs.readFileSync(manifestPath, "utf-8"))
+    : null;
 
-  writeJson(PATHS.fileRegistryJson, EMPTY_FILE_REGISTRY_JSON);
-  writeJson(PATHS.appliedOperationsJson, EMPTY_APPLIED_OPERATIONS_JSON);
-  writeText(PATHS.executionHistoryJsonl, "");
-  writeText(PATHS.appliedState, APPLIED_STATE_TEMPLATE);
-  writeText(PATHS.fileRegistryMd, FILE_REGISTRY_TEMPLATE);
-
-  removeIfExists(PATHS.intentConfirmation);
-  removeIfExists(PATHS.executionConfirmation);
-  removeIfExists(PATHS.commitConfirmation);
-  removeIfExists(PATHS.implementationPlanJson);
-  removeIfExists(PATHS.targetRequestJson);
-  removeIfExists(PATHS.targetRequestMd);
-  removeIfExists(PATHS.verifyResultJson);
-  removeIfExists(PATHS.executionResultJson);
-  removeIfExists(PATHS.cycleMetricsJsonl);
-  removeIfExists(PATHS.runMetricsJson);
-  removeIfExists(PATHS.consoleSnapshotsJson);
+  return (manifest?.new_file_paths || []).map(filePath => ({
+    file_path: filePath,
+    operation_type: "new_file",
+    operation_key: `${filePath}::new_file`,
+  }));
 }
 
 function resetNormal() {
@@ -602,11 +692,15 @@ function printSummary(kind, result) {
   console.log(`- ${path.relative(ROOT, PATHS.fileRegistryJson).replace(/\\/g, "/")}`);
   console.log(`- ${path.relative(ROOT, PATHS.appliedOperationsJson).replace(/\\/g, "/")}`);
   console.log(`- ${path.relative(ROOT, PATHS.executionHistoryJsonl).replace(/\\/g, "/")}`);
+  console.log("- AI-Human OS/data/** (cleared and reinitialized for current workspace)");
   console.log("- AI-Human OS/5_commit/APPLIED_STATE.md");
   console.log("- AI-Human OS/memory/FILE_REGISTRY.md");
   console.log("- AI-Human OS/1_planning/INTENT_CONFIRMATION.md (removed)");
   console.log("- AI-Human OS/1_planning/EXECUTION_CONFIRMATION.md (removed)");
   console.log("- AI-Human OS/5_commit/COMMIT_CONFIRMATION.md (removed)");
+  console.log("- AI-Human OS/1_planning/*_FEEDBACK.md (removed)");
+  console.log("- AI-Human OS/1_planning/PLAN_RECONCILIATION.md (removed)");
+  console.log("- AI-Human OS/7_schema_upgrade/SCHEMA_*.md (removed)");
   console.log("");
 }
 

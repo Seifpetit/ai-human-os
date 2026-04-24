@@ -6,7 +6,8 @@ const DEFAULT_CONFIG = {
   workspace_root: "",
   notes: [
     "workspace_root is the target project directory that AI-Human OS will mutate (write code into).",
-    "If workspace_root is empty, the default is the directory that contains this AI-Human OS folder.",
+    "workspace_root must be explicitly selected before planning or execution can run.",
+    "workspace_root must stay separate from the repo that contains AI-Human OS.",
     "You can override this at runtime with the env var: AI_HUMAN_OS_WORKSPACE_ROOT",
   ],
 };
@@ -19,6 +20,24 @@ function normalizeAbsoluteDir(value) {
   if (!value) return "";
   const resolved = path.resolve(String(value));
   return resolved;
+}
+
+function normalizeComparablePath(value) {
+  return normalizeAbsoluteDir(value)
+    .replace(/\//g, path.sep)
+    .replace(/[\\\/]+$/, "")
+    .toLowerCase();
+}
+
+function isSameOrNestedPath(candidatePath, basePath) {
+  const normalizedCandidate = normalizeComparablePath(candidatePath);
+  const normalizedBase = normalizeComparablePath(basePath);
+
+  if (!normalizedCandidate || !normalizedBase) {
+    return false;
+  }
+
+  return normalizedCandidate === normalizedBase || normalizedCandidate.startsWith(`${normalizedBase}${path.sep}`);
 }
 
 function getConfigPath(aiOsRoot) {
@@ -39,17 +58,18 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2) + "\n", "utf-8");
 }
 
-export function loadWorkspaceConfig(aiOsRoot) {
+export function loadWorkspaceConfig(aiOsRoot, { persistDefaults = false } = {}) {
   const configPath = getConfigPath(aiOsRoot);
 
   if (!fs.existsSync(configPath)) {
-    writeJson(configPath, DEFAULT_CONFIG);
     return { config: DEFAULT_CONFIG, configPath };
   }
 
   const loaded = readJson(configPath, null);
   if (!isObject(loaded)) {
-    writeJson(configPath, DEFAULT_CONFIG);
+    if (persistDefaults) {
+      writeJson(configPath, DEFAULT_CONFIG);
+    }
     return { config: DEFAULT_CONFIG, configPath };
   }
 
@@ -58,7 +78,7 @@ export function loadWorkspaceConfig(aiOsRoot) {
     ...loaded,
   };
 
-  if (JSON.stringify(merged) !== JSON.stringify(loaded)) {
+  if (persistDefaults && JSON.stringify(merged) !== JSON.stringify(loaded)) {
     writeJson(configPath, merged);
   }
 
@@ -67,7 +87,7 @@ export function loadWorkspaceConfig(aiOsRoot) {
 
 export function setWorkspaceRoot(aiOsRoot, workspaceRoot) {
   const configPath = getConfigPath(aiOsRoot);
-  const { config } = loadWorkspaceConfig(aiOsRoot);
+  const { config } = loadWorkspaceConfig(aiOsRoot, { persistDefaults: true });
 
   const normalized = normalizeAbsoluteDir(workspaceRoot);
   const next = {
@@ -83,14 +103,23 @@ export function resolveProjectRoot(aiOsRoot) {
 
   const envOverride = normalizeAbsoluteDir(process.env.AI_HUMAN_OS_WORKSPACE_ROOT || "");
   const configured = normalizeAbsoluteDir(config.workspace_root || "");
-  const fallback = path.dirname(aiOsRoot);
-
-  const candidate = envOverride || configured || fallback;
-  const projectRoot = normalizeAbsoluteDir(candidate);
 
   let source = "default";
   if (envOverride) source = "env";
   else if (configured) source = "config";
+
+  const candidate = envOverride || configured;
+  const projectRoot = normalizeAbsoluteDir(candidate);
+
+  if (!candidate) {
+    return {
+      ok: false,
+      projectRoot: "",
+      source,
+      configPath,
+      error: "workspace_root_not_selected",
+    };
+  }
 
   const exists = fs.existsSync(projectRoot) && fs.statSync(projectRoot).isDirectory();
   if (!exists) {
@@ -108,5 +137,33 @@ export function resolveProjectRoot(aiOsRoot) {
     projectRoot,
     source,
     configPath,
+  };
+}
+
+export function assertWorkspaceRootReady(aiOsRoot, resolvedWorkspace = null) {
+  const resolved = resolvedWorkspace || resolveProjectRoot(aiOsRoot);
+
+  if (!resolved?.ok) {
+    throw new Error(resolved?.error || "workspace_root_invalid");
+  }
+
+  if (!resolved.projectRoot || resolved.source === "default") {
+    throw new Error("workspace_root_not_selected");
+  }
+
+  const repoRoot = normalizeAbsoluteDir(path.dirname(aiOsRoot));
+  const workspaceRoot = normalizeAbsoluteDir(resolved.projectRoot);
+
+  if (
+    isSameOrNestedPath(workspaceRoot, repoRoot) ||
+    isSameOrNestedPath(repoRoot, workspaceRoot)
+  ) {
+    throw new Error("workspace_root_must_be_separate_from_ai_human_os_repo");
+  }
+
+  return {
+    ...resolved,
+    projectRoot: workspaceRoot,
+    repoRoot,
   };
 }

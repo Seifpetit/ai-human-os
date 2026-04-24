@@ -30,42 +30,54 @@ If a choice is unspecified here:
 [ PRODUCT STANDARDS INPUT START ]
 
 Product quality level:
-standard_passing
+<prototype | standard_passing | production_ready | premium_polished>
 
 Target audience:
-players opening a fast browser-based multiplayer physics game with low friction
+<who this product is for>
 
 Interaction priority:
-clarity, speed, touch accessibility
+<speed | clarity | delight | density | accessibility>
 
 Accessibility baseline:
-clear labels, touch-friendly controls, readable contrast, keyboard-safe actions where practical
+<keyboard support / color contrast / touch target expectations>
 
 Preferred product tone:
-tactical, playful, minimal
+<playful | serious | tactical | premium | minimal | bold>
+
+Visual direction:
+<short description of the overall visual feel>
+
+Color direction:
+<short description or palette preference>
+
+UI density:
+<airy | balanced | compact>
+
+Interaction notes:
+<short description>
 
 Things the UI should avoid:
-- overdesigned menus before gameplay
-- generic placeholder styling in final user-facing screens
-- crowded interfaces that obscure the main action
+- <avoidance 1>
+- <avoidance 2>
+- <avoidance 3>
 
 Styling contract mode:
-class_hook_surfaces
+<class_hook_surfaces | shared_theme_import>
 
 Styling hooks:
-className required on user-facing layout surfaces
+<className required on user-facing layout surfaces>
 
 Token usage mode:
-shared_css_variables
+<shared_css_variables | shared_theme_import>
 
 Inline styles:
-forbidden for user-facing layout styling
+<forbidden | limited>
 
 Local token objects:
-forbidden
+<forbidden | limited>
 
 Hardcoded colors:
-forbidden
+<forbidden | limited>
 
 [ PRODUCT STANDARDS INPUT END ]
 
@@ -134,10 +146,10 @@ forbidden
 
 ### Design Character
 
-- visual style should feel: crisp, game-like, focused
-- density should feel: balanced
-- motion should feel: restrained
-- visual hierarchy should feel: clear
+- visual style should feel: <fill>
+- density should feel: <airy | balanced | compact>
+- motion should feel: <still | restrained | expressive>
+- visual hierarchy should feel: <soft | clear | strong>
 
 ### Visual Consistency
 
@@ -148,11 +160,11 @@ forbidden
 
 ### Styling Contract
 
-- user-facing layout files must expose stable `className` hooks
-- user-facing layout styling should be driven by shared CSS variables or an existing shared theme surface
-- local `tokens` objects inside generated UI files are not allowed
-- inline style objects are not allowed for user-facing layout surfaces
-- hardcoded color literals are not allowed in user-facing layout files when token usage is required
+- define how user-facing files are allowed to consume tokens
+- define whether `className` is required
+- define whether inline style objects are allowed
+- define whether local token objects are allowed
+- define whether hardcoded colors are allowed
 
 ### Explicit Anti-Patterns
 
@@ -166,5 +178,5 @@ forbidden
 ## Notes
 
 - this file defines quality and UX expectations, not exact token values
-- exact token values belong in DESIGN_TOKENS.json
-- component-specific reusable interaction rules belong in UI_PATTERNS.md
+- exact token values belong in DESIGN_TOKENS.template.json / DESIGN_TOKENS.json
+- component-specific reusable interaction rules belong in UI_PATTERNS.template.md / UI_PATTERNS.md

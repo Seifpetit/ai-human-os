@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 
 import { getModelConfig, runModel } from "../runtime/model/model_adapter.js";
 import { getRuntimePaths, safeRead, syncImplementationPlanJson } from "../runtime/planning/data_layer.js";
+import { assertWorkspaceRootReady } from "../runtime/workspace/workspace_config.js";
 import {
   logStep,
   logSub,
@@ -17,6 +18,7 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const NEXT_DIR = path.dirname(__filename);
 const AI_OS_ROOT = path.dirname(NEXT_DIR);
+assertWorkspaceRootReady(AI_OS_ROOT);
 const PATHS = getRuntimePaths(AI_OS_ROOT);
 const ARCHIVE_ROOT = path.join(AI_OS_ROOT, "feature_archive");
 

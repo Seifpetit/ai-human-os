@@ -24,25 +24,25 @@ If a feature needs a common interaction pattern, agents should look here first b
 [ UI PATTERNS INPUT START ]
 
 Navigation style:
-single-screen entry flows with direct action choices before gameplay
+<single screen | stacked views | tabs | modal-driven>
 
 Preferred button hierarchy:
-one clear primary action, secondary actions visually related but less dominant
+<primary / secondary / tertiary rules>
 
 Preferred feedback style:
-inline status and local feedback near the relevant action
+<inline | toast | banner | modal>
 
 Form style:
-strong labels, moderate spacing, mobile-safe controls
+<compact | roomy | minimal labels | strong labels>
 
 Touch behavior expectations:
-tap-friendly targets, hover is optional, mobile-first layout tolerance
+<tap targets / mobile-first / hover optional>
 
 Component families that should feel consistent:
-- buttons
-- layout sections
-- status messages
-- basic forms
+- <buttons>
+- <cards>
+- <lists>
+- <forms>
 
 [ UI PATTERNS INPUT END ]
 

@@ -13,43 +13,25 @@ The system is designed to:
 The system is not the product itself. It is the operating layer used to generate product files.
 
 [ HUMAN PROJECT DESCRIPTION START ]
-Gravity Ball — Simple Summary
+What the product is:
 
-What it is:
-A multiplayer physics game where players don't control the ball directly.
+What players/users do:
 
-What players do:
-They click to create gravity wells that pull the ball toward them.
-
-Core Idea:
-There is one ball in the world.
-Every player adds forces, not movement.
-The ball moves based on combined forces (physics).
+Core idea:
 
 How it works:
-Server runs the physics 60 times per second.
-It calculates: where the ball is, how fast it's moving, and how all gravity wells affect it.
-Then sends that state to all players.
-Clients only see and send input — they don't decide anything.
 
-The Hard Parts:
-1. Force Math — all wells combine: Ball acceleration = sum of all pulls.
-2. Lag Problem — a player clicks based on what they see, but the server is already ahead.
-   Decision: trust the click as-is. Server = absolute authority. No retroactive adjustment.
+Hard parts:
 
-Rules:
-- Server = absolute authority
-- No client-side prediction (for now)
-- One file per cycle
-- Think through edge cases before coding
+Rules / constraints:
 
-One-Line Version:
-Players compete by shaping gravity in real time, while a server-controlled physics system decides the outcome.
+One-line version:
+
 [ HUMAN PROJECT DESCRIPTION END ]
 
 ## Architecture Law
 
-input → update → state → render
+input -> update -> state -> render
 
 ## Folder Structure Template
 

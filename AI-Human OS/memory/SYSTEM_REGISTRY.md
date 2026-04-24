@@ -27,7 +27,7 @@ state = {
 
 ## Architecture Invariants
 
-- input → update → state → render
+- input -> update -> state -> render
 - no reversed flow
 - no mixed responsibilities
 

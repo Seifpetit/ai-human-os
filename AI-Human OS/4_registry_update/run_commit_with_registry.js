@@ -3,7 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import { ensureCommitConfirmationApproved } from "../runtime/commit/commit_confirmation.js";
-import { resolveProjectRoot } from "../runtime/workspace/workspace_config.js";
+import { assertWorkspaceRootReady } from "../runtime/workspace/workspace_config.js";
 import {
   logStep,
   logSub,
@@ -15,8 +15,7 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const COMMIT_DIR = path.dirname(__filename);
 const AI_OS_ROOT = path.dirname(COMMIT_DIR);
-const resolvedProjectRoot = resolveProjectRoot(AI_OS_ROOT);
-const PROJECT_ROOT = resolvedProjectRoot.ok ? resolvedProjectRoot.projectRoot : path.dirname(AI_OS_ROOT);
+const PROJECT_ROOT = assertWorkspaceRootReady(AI_OS_ROOT).projectRoot;
 
 logStep("Commit + Registry Step");
 

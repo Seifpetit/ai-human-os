@@ -1,32 +1,28 @@
 # Feature Request
 
 ## Name
-Create Multiplayer Room
+<short name of the feature>
 
 ## What is it?
-Let a player create a new game session that others can join.
-This is the room creation step for starting shared multiplayer play.
-It should stay limited to creating the session and establishing the room as joinable by other players.
+<in 2–5 lines, describe the idea in plain language>
 
 ## What should the user feel or see?
-- A clear way to start a new multiplayer session
-- Confidence that a room has been created successfully
-- A visible result that indicates others can now join that session
+- <effect 1>
+- <effect 2>
+- <effect 3>
 
 ## Where does this live in the system?
 (optional — if you know)
-- client lobby UI
-- server multiplayer session creation flow
-- shared multiplayer room state boundaries
+- <part of the app or layer it touches>
 
 ## Constraints (important)
-- priority: high
-- server remains the sole source of truth for session creation
-- no unrelated systems beyond the selected feature
+- <rule 1>
+- <rule 2>
+- <rule 3>
 
 ## What should NOT happen
-- The feature must not expand into unrelated multiplayer systems beyond room creation
-- The client must not become the authority for creating or validating the room
+- <anti-pattern 1>
+- <anti-pattern 2>
 
 ## Notes (optional)
-Core requirement for multiplayer interaction and initiating shared gameplay.
+<any loose thoughts, edge cases, or uncertainties>

@@ -4,8 +4,15 @@ import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { resolveProjectRoot, setWorkspaceRoot } from "../runtime/workspace/workspace_config.js";
-import { getRuntimePaths, readJsonl } from "../runtime/planning/data_layer.js";
+import { assertWorkspaceRootReady, resolveProjectRoot, setWorkspaceRoot } from "../runtime/workspace/workspace_config.js";
+import { getRuntimePaths, readJson, readJsonl } from "../runtime/planning/data_layer.js";
+import { loadProductRequirements } from "../runtime/requirements/product_requirements.js";
+import {
+  buildCommitConfirmationContext,
+  getCommitConfirmationState,
+  renderCommitConfirmationMarkdown,
+} from "../runtime/commit/commit_confirmation.js";
+import { evaluateCommitGatePolicy } from "../runtime/throughput/throughput_policy.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const API_DIR = path.dirname(__filename);
@@ -14,7 +21,12 @@ const REPO_ROOT = path.dirname(AI_OS_ROOT);
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.AI_OS_CONSOLE_PORT || 4310);
+const UI_PORT = Number(process.env.AI_OS_CONSOLE_UI_PORT || 5174);
 const SNAPSHOT_LIMIT_PER_ARTIFACT = 12;
+const ALLOWED_BROWSER_ORIGINS = new Set([
+  `http://127.0.0.1:${UI_PORT}`,
+  `http://localhost:${UI_PORT}`,
+]);
 const RESET_MODES = [
   {
     id: "normal",
@@ -34,6 +46,9 @@ const RESET_MODES = [
 ];
 
 const ARTIFACT_LABELS = {
+  project_context_md: "PROJECT_CONTEXT.md",
+  product_standards_md: "PRODUCT_STANDARDS.md",
+  planning_prompt_txt: "1_features_planning_prompt.txt",
   intent_confirmation_md: "Gate 1: INTENT_CONFIRMATION.md",
   execution_confirmation_md: "Gate 2: EXECUTION_CONFIRMATION.md",
   commit_confirmation_md: "Gate 3: COMMIT_CONFIRMATION.md",
@@ -115,12 +130,61 @@ function writeText(filePath, content) {
   fs.writeFileSync(filePath, content, "utf-8");
 }
 
+function getBrowserOrigin(req) {
+  const origin = String(req.headers.origin || "").trim();
+  if (origin) {
+    return origin;
+  }
+
+  const referer = String(req.headers.referer || "").trim();
+  if (!referer) {
+    return "";
+  }
+
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return "";
+  }
+}
+
+function hasBrowserFetchMetadata(req) {
+  return Boolean(
+    req.headers["sec-fetch-site"] ||
+    req.headers["sec-fetch-mode"] ||
+    req.headers["sec-fetch-dest"]
+  );
+}
+
+function isAllowedBrowserOrigin(origin) {
+  return ALLOWED_BROWSER_ORIGINS.has(origin);
+}
+
+function rejectDisallowedBrowserOrigin(req, res) {
+  const browserOrigin = getBrowserOrigin(req);
+  const browserLikeRequest = Boolean(browserOrigin) || hasBrowserFetchMetadata(req);
+
+  if (!browserLikeRequest) {
+    return false;
+  }
+
+  if (isAllowedBrowserOrigin(browserOrigin)) {
+    return false;
+  }
+
+  json(res, 403, {
+    ok: false,
+    error: "origin_not_allowed",
+    detail: `Console API only accepts browser requests from ${[...ALLOWED_BROWSER_ORIGINS].join(", ")}`,
+  });
+  return true;
+}
+
 function json(res, statusCode, value) {
   const body = JSON.stringify(value, null, 2);
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
-    "Access-Control-Allow-Origin": "*",
   });
   res.end(body);
 }
@@ -129,7 +193,6 @@ function text(res, statusCode, value, contentType = "text/plain; charset=utf-8")
   res.writeHead(statusCode, {
     "Content-Type": contentType,
     "Cache-Control": "no-store",
-    "Access-Control-Allow-Origin": "*",
   });
   res.end(value || "");
 }
@@ -171,6 +234,9 @@ function getConsolePaths() {
 function getCanonicalArtifacts() {
   const paths = getConsolePaths();
   return {
+    product_standards_md: path.join(AI_OS_ROOT, "memory/PRODUCT_STANDARDS.md"),
+    project_context_md: path.join(AI_OS_ROOT, "memory/PROJECT_CONTEXT.md"),
+    planning_prompt_txt: path.join(AI_OS_ROOT, "1_planning/1_features_planning_prompt.txt"),
     intent_confirmation_md: path.join(AI_OS_ROOT, "1_planning/INTENT_CONFIRMATION.md"),
     execution_confirmation_md: path.join(AI_OS_ROOT, "1_planning/EXECUTION_CONFIRMATION.md"),
     commit_confirmation_md: path.join(AI_OS_ROOT, "5_commit/COMMIT_CONFIRMATION.md"),
@@ -238,6 +304,180 @@ function setApprovalStatus(markdown, nextStatus) {
   return updated;
 }
 
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractSectionBlock(markdown, heading) {
+  const escapedHeading = escapeRegExp(heading);
+  return markdown.match(new RegExp(`### ${escapedHeading}\\r?\\n([\\s\\S]*?)(?:\\r?\\n### |$)`, "i"))?.[1]?.trim() || "";
+}
+
+function extractScalarSection(markdown, heading) {
+  const block = extractSectionBlock(markdown, heading);
+  return block || "none";
+}
+
+function extractBulletItems(markdown, heading) {
+  return extractSectionBlock(markdown, heading)
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => /^- /.test(line))
+    .map(line => line.replace(/^- /, "").trim())
+    .filter(Boolean);
+}
+
+function extractBulletItemsAny(markdown, headings) {
+  for (const heading of headings) {
+    const items = extractBulletItems(markdown, heading);
+    if (items.length > 0) {
+      return items;
+    }
+  }
+
+  return [];
+}
+
+function readMarkdownStatus(markdown, label) {
+  return markdown.match(new RegExp(`${escapeRegExp(label)}:\\s*(?:\\r?\\n)?-\\s*(.+)`, "i"))?.[1]?.trim().toLowerCase() || "";
+}
+
+function isNoneList(items) {
+  if (!items || items.length === 0) {
+    return true;
+  }
+
+  return items.length === 1 && /^none$/i.test(items[0]);
+}
+
+function parsePlannedFileOperations(markdown) {
+  return extractSectionBlock(markdown, "Planned File Operations")
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => /^- /.test(line))
+    .map(line => line.replace(/^- /, "").trim())
+    .filter(Boolean);
+}
+
+function getCurrentProjectRoot() {
+  return assertWorkspaceRootReady(AI_OS_ROOT).projectRoot;
+}
+
+function assertGate1ApprovalEligible(markdown) {
+  const ambiguityResolutionStatus = readMarkdownStatus(markdown, "Ambiguity Resolution Status");
+  const ambiguities = extractBulletItems(markdown, "Ambiguities Detected");
+  const questions = extractBulletItems(markdown, "Questions For Human Confirmation");
+  const assumptions = extractBulletItemsAny(markdown, [
+    "Assumptions I Am Making To Proceed",
+    "Assumptions I Am Making",
+  ]);
+  const hasAmbiguitySignals = !isNoneList(ambiguities) || !isNoneList(questions) || !isNoneList(assumptions);
+  const allowedResolutionStates = new Set(["clear", "assumptions_accepted", "human_corrected"]);
+
+  if (!allowedResolutionStates.has(ambiguityResolutionStatus)) {
+    throw new Error("gate1_ambiguity_review_incomplete");
+  }
+
+  if (ambiguityResolutionStatus === "clear" && hasAmbiguitySignals) {
+    throw new Error("gate1_clear_status_conflicts_with_open_ambiguity");
+  }
+}
+
+function assertGate2ApprovalEligible(markdown) {
+  const gates = computeGateState();
+  if (gates.gate1.approval_status !== "approved") {
+    throw new Error("gate2_requires_gate1_approved");
+  }
+
+  const paths = getRuntimePaths(AI_OS_ROOT);
+  const planData = readJson(paths.implementationPlanJson, null);
+  if (!planData || !Array.isArray(planData.operations) || planData.operations.length === 0) {
+    throw new Error("gate2_missing_compiled_plan");
+  }
+
+  if (!fs.existsSync(paths.planDecisionEvaluationJson) || !fs.existsSync(paths.planTraceabilityEvaluationJson)) {
+    throw new Error("gate2_missing_plan_evaluation_artifacts");
+  }
+
+  const currentFeature = planData.feature || "none";
+  const currentGoal = planData.goal || "none";
+  const markdownFeature = extractScalarSection(markdown, "Feature");
+  const markdownGoal = extractScalarSection(markdown, "Goal");
+
+  if (markdownFeature !== currentFeature) {
+    throw new Error("gate2_stale_feature_snapshot");
+  }
+
+  if (markdownGoal !== currentGoal) {
+    throw new Error("gate2_stale_goal_snapshot");
+  }
+
+  const currentOperations = (planData.operations || []).map(
+    operation => `${operation.operation_key} | ${operation.operation_type} | ${operation.file_path}`
+  );
+  const markdownOperations = parsePlannedFileOperations(markdown);
+
+  if (
+    markdownOperations.length !== currentOperations.length ||
+    markdownOperations.some((line, index) => line !== currentOperations[index])
+  ) {
+    throw new Error("gate2_stale_operation_snapshot");
+  }
+}
+
+function assertGate3ApprovalEligible(markdown) {
+  const gates = computeGateState();
+  if (gates.gate2.approval_status !== "approved") {
+    throw new Error("gate3_requires_gate2_approved");
+  }
+
+  const projectRoot = getCurrentProjectRoot();
+  const context = buildCommitConfirmationContext({
+    aiOsRoot: AI_OS_ROOT,
+    projectRoot,
+  });
+  const throughputAssessment = evaluateCommitGatePolicy({
+    aiOsRoot: AI_OS_ROOT,
+    context,
+  });
+  const state = getCommitConfirmationState(markdown, {
+    operationKey: context.request.operation_key,
+    contentHash: context.contentHash,
+  });
+
+  if (state === "stale" || state === "missing") {
+    writeText(
+      context.paths.commitConfirmationMd,
+      renderCommitConfirmationMarkdown({
+        ...context,
+        approval: throughputAssessment.approval,
+        throughputAssessment,
+      })
+    );
+    throw new Error("gate3_artifact_stale_refreshed");
+  }
+}
+
+function assertGateApprovalEligible({ gateId, markdown, nextStatus }) {
+  if (String(nextStatus || "").trim() !== "approved") {
+    return;
+  }
+
+  if (gateId === "gate1") {
+    assertGate1ApprovalEligible(markdown);
+    return;
+  }
+
+  if (gateId === "gate2") {
+    assertGate2ApprovalEligible(markdown);
+    return;
+  }
+
+  if (gateId === "gate3") {
+    assertGate3ApprovalEligible(markdown);
+  }
+}
+
 function artifactMeta(filePath) {
   try {
     if (!fs.existsSync(filePath)) {
@@ -276,6 +516,450 @@ function computeGateState() {
       approval_status: gate3 ? readApprovalStatus(gate3) || "unknown" : "missing",
       meta: artifactMeta(CANONICAL_ARTIFACTS.commit_confirmation_md),
     },
+  };
+}
+
+function extractHumanProjectDescription(markdown) {
+  const fields = parseProjectContextFields(markdown);
+  return renderProjectContextFields(fields).trim();
+}
+
+const PROJECT_CONTEXT_FIELD_DEFS = [
+  { key: "what_the_product_is", label: "What the product is" },
+  { key: "what_players_users_do", label: "What players/users do" },
+  { key: "core_idea", label: "Core idea" },
+  { key: "how_it_works", label: "How it works" },
+  { key: "hard_parts", label: "Hard parts" },
+  { key: "rules_constraints", label: "Rules / constraints" },
+  { key: "one_line_version", label: "One-line version" },
+];
+
+function extractProjectContextBlock(markdown) {
+  const match = String(markdown || "").match(
+    /\[ HUMAN PROJECT DESCRIPTION START \]\s*([\s\S]*?)\s*\[ HUMAN PROJECT DESCRIPTION END \]/i
+  );
+  return String(match?.[1] || "").trim();
+}
+
+function normalizeProjectContextFieldValue(value) {
+  return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .trim();
+}
+
+function parseProjectContextFields(markdown) {
+  const block = extractProjectContextBlock(markdown);
+  const fields = Object.fromEntries(PROJECT_CONTEXT_FIELD_DEFS.map(field => [field.key, ""]));
+  let currentKey = "";
+
+  for (const rawLine of block.split(/\r?\n/)) {
+    const trimmed = rawLine.trimEnd();
+    const matchingField = PROJECT_CONTEXT_FIELD_DEFS.find(
+      field => trimmed.toLowerCase() === `${field.label.toLowerCase()}:`
+    );
+
+    if (matchingField) {
+      currentKey = matchingField.key;
+      continue;
+    }
+
+    if (!currentKey) {
+      continue;
+    }
+
+    const currentValue = fields[currentKey];
+    fields[currentKey] = currentValue ? `${currentValue}\n${rawLine}` : rawLine;
+  }
+
+  for (const key of Object.keys(fields)) {
+    fields[key] = normalizeProjectContextFieldValue(fields[key]);
+  }
+
+  return fields;
+}
+
+function renderProjectContextFields(fields) {
+  return PROJECT_CONTEXT_FIELD_DEFS.map(field => {
+    const value = normalizeProjectContextFieldValue(fields?.[field.key]);
+    return `${field.label}:\n${value}`;
+  }).join("\n\n");
+}
+
+function projectContextReady(fields) {
+  return PROJECT_CONTEXT_FIELD_DEFS.every(field => Boolean(normalizeProjectContextFieldValue(fields?.[field.key])));
+}
+
+function updateHumanProjectDescription(markdown, projectContextInput) {
+  let fields;
+  if (typeof projectContextInput === "string") {
+    fields = parseProjectContextFields(projectContextInput);
+    if (!projectContextReady(fields) && normalizeProjectContextFieldValue(projectContextInput)) {
+      fields = {
+        ...Object.fromEntries(PROJECT_CONTEXT_FIELD_DEFS.map(field => [field.key, ""])),
+        what_the_product_is: normalizeProjectContextFieldValue(projectContextInput),
+      };
+    }
+  } else {
+    fields = projectContextInput?.fields || projectContextInput || {};
+  }
+  const descriptionBlock = renderProjectContextFields(fields).trim() + "\n";
+
+  if (
+    !/\[ HUMAN PROJECT DESCRIPTION START \]/i.test(String(markdown || "")) ||
+    !/\[ HUMAN PROJECT DESCRIPTION END \]/i.test(String(markdown || ""))
+  ) {
+    throw new Error("project_context_template_markers_missing");
+  }
+
+  return String(markdown || "").replace(
+    /(\[ HUMAN PROJECT DESCRIPTION START \]\s*)([\s\S]*?)(\s*\[ HUMAN PROJECT DESCRIPTION END \])/i,
+    `$1${descriptionBlock}$3`
+  );
+}
+
+function summarizeProjectContext() {
+  const CANONICAL_ARTIFACTS = getCanonicalArtifacts();
+  const filePath = CANONICAL_ARTIFACTS.project_context_md;
+  const content = safeReadText(filePath);
+  const fields = parseProjectContextFields(content);
+  const humanDescription = renderProjectContextFields(fields);
+  const summary = [
+    fields.what_the_product_is,
+    fields.what_players_users_do,
+    fields.core_idea,
+    fields.one_line_version,
+  ]
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(" ");
+
+  return {
+    path: normalizePath(filePath),
+    meta: artifactMeta(filePath),
+    ready: projectContextReady(fields),
+    fields,
+    human_description: humanDescription,
+    summary,
+  };
+}
+
+function summarizePlanningPrompt() {
+  const CANONICAL_ARTIFACTS = getCanonicalArtifacts();
+  const filePath = CANONICAL_ARTIFACTS.planning_prompt_txt;
+  return {
+    path: normalizePath(filePath),
+    meta: artifactMeta(filePath),
+  };
+}
+
+function isPlaceholderValue(value) {
+  const normalized = String(value || "").trim();
+  return !normalized || /^<.*>$/.test(normalized);
+}
+
+function normalizeStyleValue(value) {
+  const normalized = String(value || "").trim();
+  return isPlaceholderValue(normalized) ? "" : normalized;
+}
+
+function replaceSingleLineField(markdown, label, value) {
+  const pattern = new RegExp(`(${escapeRegExp(label)}:\\s*\\r?\\n)([^\\r\\n]*)`, "i");
+  if (!pattern.test(String(markdown || ""))) {
+    throw new Error(`product_standards_field_missing:${label}`);
+  }
+
+  return String(markdown || "").replace(pattern, `$1${String(value || "").trim()}`);
+}
+
+function summarizeStyleInputs() {
+  const runtimePaths = getRuntimePaths(AI_OS_ROOT);
+  const requirements = loadProductRequirements(runtimePaths);
+  const standards = requirements.product_standards || {};
+  const productStandardsPath = runtimePaths.productStandardsMd;
+  const values = {
+    quality_level: normalizeStyleValue(standards.quality_level),
+    preferred_tone: normalizeStyleValue(standards.preferred_tone),
+    visual_direction: normalizeStyleValue(standards.visual_direction),
+    color_direction: normalizeStyleValue(standards.color_direction),
+    ui_density: normalizeStyleValue(standards.ui_density),
+    accessibility_baseline: normalizeStyleValue(standards.accessibility_baseline),
+    interaction_notes: normalizeStyleValue(standards.interaction_notes),
+  };
+
+  const ready = [
+    values.quality_level,
+    values.preferred_tone,
+    values.visual_direction,
+    values.color_direction,
+    values.ui_density,
+    values.accessibility_baseline,
+    values.interaction_notes,
+  ].every(Boolean);
+
+  return {
+    path: normalizePath(productStandardsPath),
+    meta: artifactMeta(productStandardsPath),
+    ...values,
+    ready,
+    summary: [
+      values.quality_level,
+      values.preferred_tone,
+      values.visual_direction,
+    ].filter(Boolean).join(" "),
+  };
+}
+
+function sanitizeProjectFolderName(value) {
+  const normalized = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const sanitized = normalized
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "")
+    .replace(/[. ]+$/g, "")
+    .trim();
+
+  if (!sanitized || sanitized === "." || sanitized === "..") {
+    throw new Error("project_name_invalid");
+  }
+
+  const reservedNames = new Set([
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    "COM1",
+    "COM2",
+    "COM3",
+    "COM4",
+    "COM5",
+    "COM6",
+    "COM7",
+    "COM8",
+    "COM9",
+    "LPT1",
+    "LPT2",
+    "LPT3",
+    "LPT4",
+    "LPT5",
+    "LPT6",
+    "LPT7",
+    "LPT8",
+    "LPT9",
+  ]);
+
+  if (reservedNames.has(sanitized.toUpperCase())) {
+    throw new Error("project_name_reserved");
+  }
+
+  return sanitized;
+}
+
+function prepareWorkspaceTarget({ parentRoot, projectName }) {
+  const normalizedParentRoot = path.resolve(String(parentRoot || ""));
+  if (
+    !normalizedParentRoot ||
+    !fs.existsSync(normalizedParentRoot) ||
+    !fs.statSync(normalizedParentRoot).isDirectory()
+  ) {
+    throw new Error("workspace_parent_root_invalid");
+  }
+
+  const projectFolderName = sanitizeProjectFolderName(projectName);
+  const workspaceRoot = path.join(normalizedParentRoot, projectFolderName);
+  const existed = fs.existsSync(workspaceRoot);
+
+  if (existed && !fs.statSync(workspaceRoot).isDirectory()) {
+    throw new Error("workspace_target_not_directory");
+  }
+
+  if (!existed) {
+    fs.mkdirSync(workspaceRoot, { recursive: true });
+  }
+
+  return {
+    parentRoot: normalizedParentRoot,
+    projectFolderName,
+    workspaceRoot,
+    created: !existed,
+  };
+}
+
+function buildWorkspaceStatus() {
+  const resolved = resolveProjectRoot(AI_OS_ROOT);
+  const hasPackageJson = resolved?.ok && resolved?.projectRoot
+    ? fs.existsSync(path.join(resolved.projectRoot, "package.json"))
+    : false;
+  const workspaceParentRoot = resolved?.projectRoot ? path.dirname(resolved.projectRoot) : "";
+  const projectName = resolved?.projectRoot ? path.basename(resolved.projectRoot) : "";
+
+  try {
+    validateWorkspaceOrThrow(resolved);
+    return {
+      ok: resolved.ok,
+      validation_ok: true,
+      has_package_json: hasPackageJson,
+      workspace_root: normalizePath(resolved.projectRoot),
+      workspace_parent_root: normalizePath(workspaceParentRoot),
+      project_name: projectName,
+      source: resolved.source,
+      config_path: normalizePath(resolved.configPath),
+      error: resolved.ok ? "none" : resolved.error,
+    };
+  } catch (err) {
+    return {
+      ok: resolved.ok,
+      validation_ok: false,
+      has_package_json: hasPackageJson,
+      workspace_root: normalizePath(resolved.projectRoot),
+      workspace_parent_root: normalizePath(workspaceParentRoot),
+      project_name: projectName,
+      source: resolved.source,
+      config_path: normalizePath(resolved.configPath),
+      error: String(err?.message || err),
+    };
+  }
+}
+
+function summarizePlanData(planData) {
+  const operations = Array.isArray(planData?.operations) ? planData.operations : [];
+  const normalizedOperations = operations.map(operation => ({
+    cycle: operation.cycle || 0,
+    operation_key: operation.operation_key || "",
+    file_path: operation.file_path || "",
+    file_name: path.basename(operation.file_path || ""),
+    operation_type: operation.operation_type || "",
+    purpose: operation.purpose || "",
+    depends_on: Array.isArray(operation.depends_on) ? operation.depends_on : [],
+  }));
+
+  return {
+    available: normalizedOperations.length > 0,
+    feature: planData?.feature || "",
+    goal: planData?.goal || "",
+    file_count: new Set(normalizedOperations.map(item => item.file_path).filter(Boolean)).size,
+    feature_count: planData?.feature ? 1 : 0,
+    operation_count: normalizedOperations.length,
+    operations: normalizedOperations,
+  };
+}
+
+function isLikelyVerifying() {
+  const recentLogs = logBuffer.slice(-20).join("\n");
+  return /verify|verification/i.test(recentLogs);
+}
+
+function buildExecutionSummary({ planSummary, currentOperation, runMetrics, gates }) {
+  const rows = readJsonl(getCanonicalArtifacts().cycle_metrics_jsonl) || [];
+  const latestByKey = new Map();
+  for (const row of rows) {
+    const key = row?.operation?.operation_key;
+    if (key && !latestByKey.has(key)) {
+      latestByKey.set(key, row);
+    }
+  }
+
+  const lifecycleStatus = runMetrics?.lifecycle?.status || "unknown";
+  const gate3Pending =
+    (gates?.gate3?.meta?.exists && gates?.gate3?.approval_status !== "approved") ||
+    lifecycleStatus === "commit_gate_blocked";
+  const verifying =
+    activeRun?.status === "running" &&
+    activeRun?.task_id === "ai" &&
+    isLikelyVerifying();
+
+  const operations = (planSummary.operations || []).map(operation => {
+    const latestCycle = latestByKey.get(operation.operation_key) || null;
+    const isCurrent = currentOperation?.operation_key === operation.operation_key;
+    let status = "pending";
+
+    if (isCurrent && gate3Pending) {
+      status = "needs review";
+    } else if (isCurrent && activeRun?.status === "running" && activeRun?.task_id === "ai") {
+      status = verifying ? "verifying" : "running";
+    } else if (latestCycle) {
+      status = latestCycle?.execution?.final_status === "success" ? "done" : "failed";
+    }
+
+    return {
+      operation_key: operation.operation_key,
+      file_path: operation.file_path,
+      file_name: operation.file_name,
+      operation_type: operation.operation_type,
+      purpose: operation.purpose,
+      status,
+      retry_count: latestCycle?.recovery?.retry_count ?? 0,
+      failure_classification: latestCycle?.execution?.terminal_reason || "none",
+      is_current: isCurrent,
+    };
+  });
+
+  return {
+    available: planSummary.available,
+    total_operations: operations.length,
+    completed_operations: operations.filter(item => item.status === "done").length,
+    current_operation_key: currentOperation?.operation_key || "",
+    operations,
+  };
+}
+
+function computeFrontendPhase({ workspace, projectContext, styleInputs, gates, runMetrics }) {
+  const lifecycleStatus = runMetrics?.lifecycle?.status || "unknown";
+
+  if (!workspace.validation_ok || !projectContext.ready || !styleInputs.ready) {
+    return {
+      current_screen: "init",
+      title: "Init",
+      description: "Initialize workspace, project context, and style inputs before intake.",
+    };
+  }
+
+  if (gates?.gate1?.approval_status === "missing") {
+    return {
+      current_screen: "intake",
+      title: "Intake",
+      description: "Prepare raw human scope and run planning intake.",
+    };
+  }
+
+  if (gates?.gate1?.approval_status !== "approved") {
+    return {
+      current_screen: "intent_review",
+      title: "Intent Review",
+      description: "Review the machine understanding of the intended scope.",
+    };
+  }
+
+  if (gates?.gate2?.approval_status !== "approved") {
+    return {
+      current_screen: "plan_review",
+      title: "Plan Review",
+      description: "Review the compiled plan before execution starts.",
+    };
+  }
+
+  if (
+    (gates?.gate3?.meta?.exists && gates?.gate3?.approval_status !== "approved") ||
+    lifecycleStatus === "commit_gate_blocked"
+  ) {
+    return {
+      current_screen: "artifact_review",
+      title: "Artifact Review",
+      description: "Approve the verified artifact before it enters accepted state.",
+    };
+  }
+
+  if (lifecycleStatus === "completed") {
+    return {
+      current_screen: "complete",
+      title: "Complete",
+      description: "Run complete.",
+    };
+  }
+
+  return {
+    current_screen: "execution",
+    title: "Execution",
+    description: "Track progress through planned operations.",
   };
 }
 
@@ -706,6 +1390,72 @@ function getResetOptions() {
   };
 }
 
+function pickWorkspaceRoot({ projectName } = {}) {
+  if (process.platform !== "win32") {
+    throw new Error("workspace_picker_unsupported_platform");
+  }
+
+  const currentWorkspace = resolveProjectRoot(AI_OS_ROOT);
+  const initialPath = currentWorkspace.ok ? path.dirname(currentWorkspace.projectRoot) : REPO_ROOT;
+  const normalizedProjectName = sanitizeProjectFolderName(projectName);
+  const pickerScriptPath = path.join(API_DIR, "select_parent_folder.ps1");
+
+  const output = execFileSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-STA",
+      "-File",
+      pickerScriptPath,
+      "-InitialPath",
+      initialPath,
+      "-DialogTitle",
+      `Choose the parent folder for ${normalizedProjectName}`,
+    ],
+    {
+      cwd: REPO_ROOT,
+      encoding: "utf-8",
+    }
+  ).trim();
+
+  if (!output || output === "__CANCELLED__") {
+    return { ok: true, cancelled: true };
+  }
+
+  const target = prepareWorkspaceTarget({
+    parentRoot: output,
+    projectName: normalizedProjectName,
+  });
+  const result = setWorkspaceRoot(AI_OS_ROOT, target.workspaceRoot);
+  const resolved = resolveProjectRoot(AI_OS_ROOT);
+  validateWorkspaceOrThrow(resolved);
+
+  return {
+    ok: true,
+    cancelled: false,
+    selected: {
+      parent_root: normalizePath(target.parentRoot),
+      project_name: target.projectFolderName,
+      workspace_root: normalizePath(target.workspaceRoot),
+      created: target.created,
+    },
+    written: {
+      workspace_root: normalizePath(result.config.workspace_root),
+      config_path: normalizePath(result.configPath),
+    },
+    resolved: {
+      ok: resolved.ok,
+      workspace_root: normalizePath(resolved.projectRoot),
+      workspace_parent_root: normalizePath(path.dirname(resolved.projectRoot)),
+      project_name: path.basename(resolved.projectRoot),
+      source: resolved.source,
+      error: resolved.ok ? "none" : resolved.error,
+    },
+  };
+}
+
 function runResetMode({ mode, archiveDirName = "" }) {
   const normalizedMode = String(mode || "").trim().toLowerCase();
   if (!RESET_MODES.some(item => item.id === normalizedMode)) {
@@ -716,8 +1466,13 @@ function runResetMode({ mode, archiveDirName = "" }) {
     throw new Error("run_already_active");
   }
 
-  const workspace = resolveProjectRoot(AI_OS_ROOT);
-  validateWorkspaceOrThrow(workspace);
+  const resolvedWorkspace = resolveProjectRoot(AI_OS_ROOT);
+  let workspace = null;
+  try {
+    workspace = validateWorkspaceOrThrow(resolvedWorkspace);
+  } catch {
+    workspace = null;
+  }
 
   const args = [path.join(REPO_ROOT, "reset.js"), "--mode", normalizedMode];
   if (normalizedMode === "archive") {
@@ -729,13 +1484,13 @@ function runResetMode({ mode, archiveDirName = "" }) {
 
   pushLog(`[console] reset start mode=${normalizedMode}`);
   const output = execFileSync(process.execPath, args, {
-    cwd: REPO_ROOT,
-    encoding: "utf-8",
-    env: {
-      ...process.env,
-      ...(workspace.ok ? { AI_HUMAN_OS_WORKSPACE_ROOT: workspace.projectRoot } : {}),
-    },
-  });
+      cwd: REPO_ROOT,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        ...(workspace ? { AI_HUMAN_OS_WORKSPACE_ROOT: workspace.projectRoot } : {}),
+      },
+    });
 
   for (const line of String(output || "").split(/\r?\n/)) {
     if (line.trim()) {
@@ -759,6 +1514,11 @@ function computePipelineState() {
   const runMetrics = safeReadJson(CANONICAL_ARTIFACTS.run_metrics_json);
   const verifyResult = safeReadJson(CANONICAL_ARTIFACTS.verify_result_json);
   const executionResult = safeReadJson(CANONICAL_ARTIFACTS.execution_result_json);
+  const planData = safeReadJson(CANONICAL_ARTIFACTS.implementation_plan_json);
+  const planSummary = summarizePlanData(planData);
+  const projectContext = summarizeProjectContext();
+  const styleInputs = summarizeStyleInputs();
+  const planningPrompt = summarizePlanningPrompt();
 
   const currentOperation = request
     ? {
@@ -770,43 +1530,68 @@ function computePipelineState() {
     : null;
 
   const lifecycleStatus = runMetrics?.lifecycle?.status || "unknown";
-  const failureClass = runMetrics?.failure?.classification || "none";
+  const workspace = buildWorkspaceStatus();
+  const phase = computeFrontendPhase({
+    workspace,
+    projectContext,
+    styleInputs,
+    gates,
+    runMetrics,
+  });
+  const executionSummary = buildExecutionSummary({
+    planSummary,
+    currentOperation,
+    runMetrics,
+    gates,
+  });
 
   const suggested = (() => {
-    if (gates.gate1.approval_status !== "approved") {
-      return "Review and approve Gate 1 (INTENT_CONFIRMATION.md), then run planning.";
+    if (phase.current_screen === "init") {
+      return "Set a valid workspace, fill PROJECT_CONTEXT.md, and complete the style fields before intake.";
     }
-    if (gates.gate2.approval_status !== "approved") {
-      return "Run planning, then approve Gate 2 (EXECUTION_CONFIRMATION.md).";
+    if (phase.current_screen === "intake") {
+      return "Edit the planning prompt, then run planning intake.";
     }
-    if (gates.gate3.approval_status === "needs_human_review" || gates.gate3.approval_status === "pending_current") {
-      return "Review and approve Gate 3 (COMMIT_CONFIRMATION.md), then rerun run_ai.";
+    if (phase.current_screen === "intent_review") {
+      return "Review INTENT_CONFIRMATION.md and approve Gate 1.";
     }
-    if (lifecycleStatus === "commit_gate_blocked") {
-      return "Gate 3 is blocking commit. Approve COMMIT_CONFIRMATION.md and rerun run_ai.";
+    if (phase.current_screen === "plan_review") {
+      return planSummary.available
+        ? "Review the compiled plan, approve Gate 2, and start execution."
+        : "Run planning to generate the execution-ready plan.";
     }
-    if (lifecycleStatus === "execution_gate_blocked") {
-      return "Gate 2 is blocking execution. Approve EXECUTION_CONFIRMATION.md and rerun run_ai.";
+    if (phase.current_screen === "artifact_review") {
+      return "Review COMMIT_CONFIRMATION.md, approve Gate 3, then rerun run_ai.";
     }
-    if (lifecycleStatus === "completed") {
-      return "Run completed. Render metrics report if needed.";
+    if (phase.current_screen === "complete") {
+      return "Run completed. Inspect metrics or start a new run.";
     }
-    return "Run the next pipeline step.";
+    return "Run the next execution cycle.";
   })();
-
-  const workspace = resolveProjectRoot(AI_OS_ROOT);
 
   return {
     ok: true,
     repo_root: normalizePath(REPO_ROOT),
     ai_os_root: normalizePath(AI_OS_ROOT),
-    workspace: {
-      ok: workspace.ok,
-      workspace_root: normalizePath(workspace.projectRoot),
-      source: workspace.source,
-      config_path: normalizePath(workspace.configPath),
-      error: workspace.ok ? "none" : workspace.error,
+    active_run: activeRun,
+    workspace,
+    readiness: {
+      workspace_ready: workspace.validation_ok,
+      project_context_ready: projectContext.ready,
+      style_ready: styleInputs.ready,
+      intake_ready: workspace.validation_ok && projectContext.ready && styleInputs.ready,
     },
+    phase,
+    paths: {
+      planning_prompt: planningPrompt.path,
+      project_context: projectContext.path,
+      product_standards: styleInputs.path,
+    },
+    project_context: projectContext,
+    style_inputs: styleInputs,
+    planning_prompt: planningPrompt,
+    plan_summary: planSummary,
+    execution_summary: executionSummary,
     gates,
     current_operation: currentOperation,
     run: runMetrics
@@ -814,6 +1599,9 @@ function computePipelineState() {
           run_id: runMetrics.run_id || "",
           lifecycle: runMetrics.lifecycle || {},
           failure: runMetrics.failure || {},
+          success: runMetrics.success || {},
+          scoring: runMetrics.scoring || {},
+          performance: runMetrics.performance || {},
         }
       : null,
     suggested_next_action: suggested,
@@ -824,6 +1612,32 @@ function computePipelineState() {
       executionResult,
       request,
     }),
+    legacy: {
+      workspace: {
+        ok: workspace.ok,
+        workspace_root: workspace.workspace_root,
+        source: workspace.source,
+        config_path: workspace.config_path,
+        error: workspace.error,
+      },
+      gates,
+      current_operation: currentOperation,
+      run: runMetrics
+        ? {
+            run_id: runMetrics.run_id || "",
+            lifecycle: runMetrics.lifecycle || {},
+            failure: runMetrics.failure || {},
+          }
+        : null,
+      suggested_next_action: suggested,
+      blocked_summary: summarizeBlockedState({
+        gates,
+        runMetrics,
+        verifyResult,
+        executionResult,
+        request,
+      }),
+    },
   };
 }
 
@@ -959,11 +1773,8 @@ function startTask(taskId) {
 }
 
 function validateWorkspaceOrThrow(resolvedWorkspace) {
-  if (!resolvedWorkspace?.ok) {
-    throw new Error("workspace_root_invalid");
-  }
-
-  const workspaceRoot = path.resolve(resolvedWorkspace.projectRoot);
+  const validatedWorkspace = assertWorkspaceRootReady(AI_OS_ROOT, resolvedWorkspace);
+  const workspaceRoot = path.resolve(validatedWorkspace.projectRoot);
   const normalized = workspaceRoot.replace(/\//g, "\\");
 
   // Drive root like C:\ or D:\
@@ -984,17 +1795,21 @@ function validateWorkspaceOrThrow(resolvedWorkspace) {
     }
   }
 
-  const hasPackageJson = fs.existsSync(path.join(workspaceRoot, "package.json"));
-  const allowNoPackageJson = String(process.env.AI_OS_CONSOLE_ALLOW_NO_PACKAGE_JSON || "").toLowerCase() === "true";
-
-  if (!hasPackageJson && !allowNoPackageJson) {
-    throw new Error("workspace_root_missing_package_json");
-  }
+  return validatedWorkspace;
 }
 
 function handleOptions(req, res) {
+  const origin = String(req.headers.origin || "").trim();
+  if (!origin || !ALLOWED_BROWSER_ORIGINS.has(origin)) {
+    res.writeHead(403, {
+      "Cache-Control": "no-store",
+    });
+    res.end();
+    return;
+  }
+
   res.writeHead(204, {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "86400",
@@ -1005,6 +1820,10 @@ function handleOptions(req, res) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || HOST}`);
   const pathname = url.pathname;
+
+  if (rejectDisallowedBrowserOrigin(req, res)) {
+    return;
+  }
 
   if (req.method === "OPTIONS") {
     return handleOptions(req, res);
@@ -1060,16 +1879,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && pathname === "/api/workspace") {
-    const workspace = resolveProjectRoot(AI_OS_ROOT);
+    const workspace = buildWorkspaceStatus();
     return json(res, 200, {
       ok: true,
-      workspace: {
-        ok: workspace.ok,
-        workspace_root: normalizePath(workspace.projectRoot),
-        source: workspace.source,
-        config_path: normalizePath(workspace.configPath),
-        error: workspace.ok ? "none" : workspace.error,
-      },
+      workspace,
     });
   }
 
@@ -1081,25 +1894,93 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await readBody(req);
       const payload = parseJsonBody(body);
-      const nextRoot = String(payload?.workspace_root || "").trim();
+      const nextRoot = String(payload?.root || payload?.workspace_root || "").trim();
+      if (!nextRoot) {
+        return badRequest(res, "workspace_root_missing");
+      }
       const result = setWorkspaceRoot(AI_OS_ROOT, nextRoot);
-      const resolved = resolveProjectRoot(AI_OS_ROOT);
-      validateWorkspaceOrThrow(resolved);
+      const workspace = buildWorkspaceStatus();
+      if (!workspace.validation_ok) {
+        throw new Error(workspace.error || "workspace_root_invalid");
+      }
       return json(res, 200, {
         ok: true,
         written: {
           workspace_root: normalizePath(result.config.workspace_root),
           config_path: normalizePath(result.configPath),
         },
-        resolved: {
-          ok: resolved.ok,
-          workspace_root: normalizePath(resolved.projectRoot),
-          source: resolved.source,
-          error: resolved.ok ? "none" : resolved.error,
-        },
+        resolved: workspace,
       });
     } catch (err) {
       return json(res, 409, { ok: false, error: "workspace_update_failed", detail: String(err?.message || err) });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/workspace/pick") {
+    try {
+      const body = await readBody(req);
+      const payload = parseJsonBody(body);
+      return json(res, 200, pickWorkspaceRoot({
+        projectName: payload?.project_name || payload?.projectName || "",
+      }));
+    } catch (err) {
+      return json(res, 409, { ok: false, error: "workspace_pick_failed", detail: String(err?.message || err) });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/project-context") {
+    try {
+      const body = await readBody(req);
+      const payload = parseJsonBody(body);
+      const CANONICAL_ARTIFACTS = getCanonicalArtifacts();
+      const filePath = CANONICAL_ARTIFACTS.project_context_md;
+      const existing = safeReadText(filePath);
+      const updated = updateHumanProjectDescription(
+        existing,
+        payload?.fields || payload?.project_context || payload?.human_description || payload?.humanDescription || {}
+      );
+      writeText(filePath, updated);
+      return json(res, 200, {
+        ok: true,
+        project_context: summarizeProjectContext(),
+        artifact: {
+          id: "project_context_md",
+          path: normalizePath(filePath),
+          meta: artifactMeta(filePath),
+        },
+      });
+    } catch (err) {
+      return json(res, 409, { ok: false, error: "project_context_update_failed", detail: String(err?.message || err) });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/project-style") {
+    try {
+      const body = await readBody(req);
+      const payload = parseJsonBody(body);
+      const CANONICAL_ARTIFACTS = getCanonicalArtifacts();
+      const filePath = CANONICAL_ARTIFACTS.product_standards_md;
+      const existing = safeReadText(filePath);
+      let updated = existing;
+      updated = replaceSingleLineField(updated, "Product quality level", payload?.quality_level ?? payload?.qualityLevel ?? "");
+      updated = replaceSingleLineField(updated, "Preferred product tone", payload?.preferred_tone ?? payload?.preferredTone ?? "");
+      updated = replaceSingleLineField(updated, "Visual direction", payload?.visual_direction ?? payload?.visualDirection ?? "");
+      updated = replaceSingleLineField(updated, "Color direction", payload?.color_direction ?? payload?.colorDirection ?? "");
+      updated = replaceSingleLineField(updated, "UI density", payload?.ui_density ?? payload?.uiDensity ?? "");
+      updated = replaceSingleLineField(updated, "Accessibility baseline", payload?.accessibility_baseline ?? payload?.accessibilityBaseline ?? "");
+      updated = replaceSingleLineField(updated, "Interaction notes", payload?.interaction_notes ?? payload?.interactionNotes ?? "");
+      writeText(filePath, updated);
+      return json(res, 200, {
+        ok: true,
+        style_inputs: summarizeStyleInputs(),
+        artifact: {
+          id: "product_standards_md",
+          path: normalizePath(filePath),
+          meta: artifactMeta(filePath),
+        },
+      });
+    } catch (err) {
+      return json(res, 409, { ok: false, error: "project_style_update_failed", detail: String(err?.message || err) });
     }
   }
 
@@ -1125,6 +2006,11 @@ const server = http.createServer(async (req, res) => {
       const CANONICAL_ARTIFACTS = getCanonicalArtifacts();
       const filePath = CANONICAL_ARTIFACTS[artifactId];
       const existing = safeReadText(filePath);
+      assertGateApprovalEligible({
+        gateId,
+        markdown: existing,
+        nextStatus: status,
+      });
       snapshotArtifact(artifactId, `${gateId}_before_approve`, {
         gate_id: gateId,
         phase: "before_approve",

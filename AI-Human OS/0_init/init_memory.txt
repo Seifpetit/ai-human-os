@@ -6,46 +6,19 @@ Edit the blocks below first. Everything after them is prompt logic.
 
 [ HUMAN PROJECT DESCRIPTION START ]
 
-Gravity Ball - Simple Summary
+What the product is:
 
-What it is:
-A multiplayer physics game where players do not control the ball directly.
+What players/users do:
 
-What players do:
-They click to create gravity wells that pull the ball toward them.
-
-Core Idea:
-There is one ball in the world.
-Every player adds forces, not movement.
-The ball moves based on combined forces.
-
-Think: everyone is influencing gravity, not controlling the object.
+Core idea:
 
 How it works:
-The server runs physics at 60 ticks per second.
-It calculates:
-- where the ball is
-- how fast it is moving
-- how all gravity wells affect it
-
-Then it sends that state to all players.
-
-Clients only see and send input. They do not decide anything.
 
 Hard parts:
-1. Force math
-   Ball acceleration is the sum of all pulls.
-2. Lag
-   A player clicks based on what they see, but the server is already in the future.
 
-Rules:
-- server is absolute authority
-- no fake smoothing or prediction for now
-- one step at a time, one file per cycle
-- think through edge cases before coding
+Rules / constraints:
 
 One-line version:
-Players compete by shaping gravity in real time while a server-controlled physics system decides the outcome.
 
 [ HUMAN PROJECT DESCRIPTION END ]
 

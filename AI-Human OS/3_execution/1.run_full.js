@@ -16,6 +16,7 @@ import {
 import { assertExecutionConfirmationApproved } from "../runtime/planning/execution_confirmation.js";
 import { buildCycleMetric, buildRunSummary, extractDriftViolations } from "../runtime/recovery/execution_metrics.js";
 import { buildRetryFeedback, classifyFailure } from "../runtime/recovery/retry_feedback.js";
+import { assertWorkspaceRootReady } from "../runtime/workspace/workspace_config.js";
 import {
   buildExecutionFailureAssessment,
   getAdaptiveRetryPolicy,
@@ -33,6 +34,7 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const EXEC_DIR = path.dirname(__filename);
 const AI_OS_ROOT = path.dirname(EXEC_DIR);
+assertWorkspaceRootReady(AI_OS_ROOT);
 const PATHS = getRuntimePaths(AI_OS_ROOT);
 const RUN_ID = `run_${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}`;
 const RUN_STARTED_AT = new Date().toISOString();

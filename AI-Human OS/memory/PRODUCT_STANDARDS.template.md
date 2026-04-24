@@ -44,6 +44,18 @@ Accessibility baseline:
 Preferred product tone:
 <playful | serious | tactical | premium | minimal | bold>
 
+Visual direction:
+<short description of the overall visual feel>
+
+Color direction:
+<short description or palette preference>
+
+UI density:
+<airy | balanced | compact>
+
+Interaction notes:
+<short description>
+
 Things the UI should avoid:
 - <avoidance 1>
 - <avoidance 2>

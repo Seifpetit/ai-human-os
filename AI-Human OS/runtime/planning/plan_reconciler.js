@@ -3,6 +3,7 @@ import path from "path";
 
 import { evaluatePlanDecisions } from "./decision_evaluator.js";
 import { parseImplementationPlanMarkdown, renderImplementationPlanMarkdown } from "./data_layer.js";
+import { assertWorkspaceRootReady } from "../workspace/workspace_config.js";
 
 function clonePlanData(planData) {
   return JSON.parse(JSON.stringify(planData));
@@ -73,7 +74,7 @@ function reconcileOperationTypes(planData, decisionEvaluation, options = {}) {
 }
 
 export function reconcileImplementationPlanMarkdown(aiOsRoot, markdown) {
-  const projectRoot = path.dirname(aiOsRoot);
+  const projectRoot = assertWorkspaceRootReady(aiOsRoot).projectRoot;
   let parsed;
 
   try {

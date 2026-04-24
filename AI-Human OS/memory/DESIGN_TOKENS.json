@@ -1,45 +1,45 @@
 {
   "meta": {
-    "name": "Gravity Ball Core Theme",
+    "name": "<product_or_theme_name>",
     "version": 1,
-    "quality_level": "standard_passing",
-    "notes": "Restrained sci-fi sport palette for a browser multiplayer physics game."
+    "quality_level": "<prototype|standard_passing|production_ready|premium_polished>",
+    "notes": "<short description of the design system intent>"
   },
   "color": {
     "brand": {
-      "primary": "#2D6CDF",
-      "secondary": "#18B6A3",
-      "accent": "#F2C14E"
+      "primary": "<hex>",
+      "secondary": "<hex>",
+      "accent": "<hex>"
     },
     "surface": {
-      "background": "#0E1525",
-      "panel": "#162033",
-      "elevated": "#1D2940",
-      "inverse": "#F6F8FC"
+      "background": "<hex>",
+      "panel": "<hex>",
+      "elevated": "<hex>",
+      "inverse": "<hex>"
     },
     "text": {
-      "primary": "#F6F8FC",
-      "secondary": "#C8D2E3",
-      "inverse": "#111827",
-      "muted": "#8FA1BA"
+      "primary": "<hex>",
+      "secondary": "<hex>",
+      "inverse": "<hex>",
+      "muted": "<hex>"
     },
     "border": {
-      "subtle": "#2B3953",
-      "strong": "#4A5E82"
+      "subtle": "<hex>",
+      "strong": "<hex>"
     },
     "state": {
-      "success": "#1FA971",
-      "warning": "#D99A2B",
-      "danger": "#D9534F",
-      "info": "#2D6CDF",
-      "disabled": "#5D6E8A"
+      "success": "<hex>",
+      "warning": "<hex>",
+      "danger": "<hex>",
+      "info": "<hex>",
+      "disabled": "<hex>"
     },
     "button": {
-      "primary_bg": "#2D6CDF",
-      "primary_text": "#F6F8FC",
-      "secondary_bg": "#1D2940",
-      "secondary_text": "#F6F8FC",
-      "ghost_text": "#C8D2E3"
+      "primary_bg": "<hex>",
+      "primary_text": "<hex>",
+      "secondary_bg": "<hex>",
+      "secondary_text": "<hex>",
+      "ghost_text": "<hex>"
     }
   },
   "spacing": {
@@ -58,9 +58,9 @@
   },
   "typography": {
     "font_family": {
-      "base": "system-ui, sans-serif",
-      "display": "system-ui, sans-serif",
-      "mono": "Consolas, monospace"
+      "base": "<font family>",
+      "display": "<font family>",
+      "mono": "<font family>"
     },
     "size": {
       "caption": 12,
@@ -83,9 +83,9 @@
   },
   "shadow": {
     "none": "none",
-    "sm": "0 2px 8px rgba(0, 0, 0, 0.18)",
-    "md": "0 8px 24px rgba(0, 0, 0, 0.22)",
-    "lg": "0 16px 40px rgba(0, 0, 0, 0.28)"
+    "sm": "<shadow value>",
+    "md": "<shadow value>",
+    "lg": "<shadow value>"
   },
   "motion": {
     "duration": {
@@ -94,8 +94,8 @@
       "slow": 280
     },
     "easing": {
-      "standard": "ease",
-      "emphasized": "cubic-bezier(0.2, 0.8, 0.2, 1)"
+      "standard": "<easing>",
+      "emphasized": "<easing>"
     }
   },
   "component": {
@@ -110,18 +110,18 @@
         "md": 16,
         "lg": 20
       },
-      "radius": 8,
-      "font_weight": 600
+      "radius": "<token ref or literal>",
+      "font_weight": "<token ref or literal>"
     },
     "input": {
       "height": 40,
       "padding_x": 12,
-      "radius": 8
+      "radius": "<token ref or literal>"
     },
     "card": {
       "padding": 16,
-      "radius": 12,
-      "shadow": "0 8px 24px rgba(0, 0, 0, 0.22)"
+      "radius": "<token ref or literal>",
+      "shadow": "<token ref or literal>"
     }
   }
 }

@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 
 import { getModelConfig, runModel } from "../runtime/model/model_adapter.js";
 import { getRuntimePaths, safeRead } from "../runtime/planning/data_layer.js";
+import { assertWorkspaceRootReady } from "../runtime/workspace/workspace_config.js";
 import {
   logDivider,
   logError,
@@ -17,6 +18,7 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const PLANNING_DIR = path.dirname(__filename);
 const AI_OS_ROOT = path.dirname(PLANNING_DIR);
+assertWorkspaceRootReady(AI_OS_ROOT);
 const PATHS = getRuntimePaths(AI_OS_ROOT);
 const INTENT_CONFIRMATION_PATH = path.join(PLANNING_DIR, "INTENT_CONFIRMATION.md");
 
