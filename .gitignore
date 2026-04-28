@@ -4,3 +4,5 @@ coverage/
 *.log
 .env
 .env.*
+AI-Human OS/memory/
+AI-Human OS/product/ui/dist/

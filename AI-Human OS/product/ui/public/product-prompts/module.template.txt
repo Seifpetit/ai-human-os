@@ -1,0 +1,28 @@
+You are implementing a module.
+
+Module Name:
+{{name}}
+
+Responsibility:
+{{responsibility}}
+
+Inputs:
+{{inputs}}
+
+Outputs:
+{{outputs}}
+
+Context:
+All modules:
+{{all_modules}}
+
+Constraints:
+- Keep it simple
+- No global state unless required
+- Clean structure
+
+Task:
+Implement this module in JavaScript.
+
+Output:
+Return ONLY the code.
